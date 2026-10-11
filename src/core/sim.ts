@@ -1,4 +1,4 @@
-import { BUILDINGS, HUT_CAPACITY, PRODUCTION } from '../data/buildings';
+import { BUILDINGS, FOOD_RESTORE, HUNGER_DROP, HUT_CAPACITY, PRODUCTION, START_RES, THIRST_DROP, WATER_RESTORE } from '../data/buildings';
 import { EVENTS } from '../data/events';
 import { TECHS } from '../data/techs';
 import { eraDone } from './goals';
@@ -27,7 +27,7 @@ export function initialState(): State {
   }));
   return {
     tick: 0, w, h, reactor, buildings: [], settlers,
-    res: { wood: 60, stone: 20, food: 60, water: 60, knowledge: 0 },
+    res: { ...START_RES },
     nextId: 100,
     era: 0,
     techs: [],
@@ -157,10 +157,10 @@ export function step(s: State): State {
     }
     let { warmth, hunger, thirst, health } = p;
     warmth = clamp(warmth + clamp((temp - COMFORT) * 0.08, -3, 1), 0, 100);
-    hunger = clamp(hunger - 0.4, 0, 100);
-    thirst = clamp(thirst - 0.6, 0, 100);
-    if (hunger < 50 && res.food >= 1) { res.food -= 1; hunger = clamp(hunger + 30, 0, 100); }
-    if (thirst < 50 && res.water >= 1) { res.water -= 1; thirst = clamp(thirst + 30, 0, 100); }
+    hunger = clamp(hunger - HUNGER_DROP, 0, 100);
+    thirst = clamp(thirst - THIRST_DROP, 0, 100);
+    if (hunger < 50 && res.food >= 1) { res.food -= 1; hunger = clamp(hunger + FOOD_RESTORE, 0, 100); }
+    if (thirst < 50 && res.water >= 1) { res.water -= 1; thirst = clamp(thirst + WATER_RESTORE, 0, 100); }
     const suffering = warmth <= 0 || hunger <= 0 || thirst <= 0;
     health = suffering ? health - 1.5 : warmth > 30 && hunger > 30 && thirst > 30 ? Math.min(100, health + 0.2) : health;
     for (const e of activeEvents(s)) {

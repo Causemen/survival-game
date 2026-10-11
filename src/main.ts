@@ -8,7 +8,7 @@ import { TECHS } from './data/techs';
 import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
 
-const TICK_MS = 500;
+const TICK_MS = 2000; // 1 игровой час; игровой день = 48 с на 1x, вся игра около часа
 
 let state: State = initialState();
 let speed = 1;

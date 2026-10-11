@@ -21,7 +21,7 @@ describe('температура', () => {
 describe('строительство', () => {
   it('списывает ресурсы', () => {
     const s = build(initialState(), 'hut', 1, 1)!;
-    expect(s.res.wood).toBe(40);
+    expect(s.res.wood).toBe(25);
   });
   it('нельзя на реактор, за карту и без ресурсов', () => {
     const s = initialState();
@@ -121,5 +121,25 @@ describe('события', () => {
     let s = { ...initialState(), active: [{ id: 'blizzard', until: 5 }], tick: 4 };
     s = step(s);
     expect(s.active.length).toBe(0);
+  });
+});
+
+describe('экономика: потребление и выработка в сутки', () => {
+  it('8 поселенцев съедают и выпивают около 16 за сутки', () => {
+    const s0 = { ...initialState(), res: { wood: 0, stone: 0, food: 1000, water: 1000, knowledge: 0 } };
+    const warm = run(s0, 24 * 5); // первые сутки люди ещё сыты, меряем установившийся расход
+    const s = run(warm, 24 * 5);
+    expect((warm.res.food - s.res.food) / 5).toBeGreaterThan(14);
+    expect((warm.res.food - s.res.food) / 5).toBeLessThan(18);
+    expect((warm.res.water - s.res.water) / 5).toBeGreaterThan(14);
+    expect((warm.res.water - s.res.water) / 5).toBeLessThan(18);
+  });
+  it('разумное начало (3 собирателя, 2 фильтра, лесоруб, 2 хижины) держит колонию 10 суток', () => {
+    let s = { ...initialState(), res: { wood: 300, stone: 100, food: 30, water: 24, knowledge: 0 } };
+    for (const [k, x, y] of [['gatherer', 11, 7], ['gatherer', 13, 7], ['gatherer', 12, 6], ['purifier', 11, 9], ['purifier', 13, 9], ['woodcutter', 12, 10], ['hut', 10, 8], ['hut', 14, 8]] as const) s = build(s, k, x, y)!;
+    s = run(s, 24 * 10);
+    expect(s.settlers.filter((p) => p.alive).length).toBe(8);
+    expect(s.res.food).toBeGreaterThan(0);
+    expect(s.res.water).toBeGreaterThan(0);
   });
 });
