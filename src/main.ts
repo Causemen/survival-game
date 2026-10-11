@@ -5,6 +5,7 @@ import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 import { ERAS } from './data/eras';
 import { TECHS } from './data/techs';
+import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
 import { costText, missingText, RateTracker, rateText, type ResKey } from './ui/format';
 import './ui/style.css';
@@ -39,6 +40,7 @@ root.innerHTML = `
   </div>
   <aside id="side">
     <div id="goals"></div>
+    <div id="events"></div>
     <h3>${RU.techs} · 📖 <span id="kn"></span></h3>
     <div id="techs"></div>
     <h3>${RU.selected}</h3>
@@ -54,7 +56,7 @@ root.innerHTML = `
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
 const resEl = $('res'), needsEl = $('needs'), dayEl = $('day'), speedEl = $('speed');
 const stage = $('stage'), view = $('view'), alertEl = $('alert'), bannerEl = $('banner');
-const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs');
+const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs'), eventsEl = $('events');
 const tip = $('tip'), bar = $('bar'), intro = $('intro');
 
 // ——— Панели ———
@@ -105,6 +107,27 @@ function select(kind: BuildingKind) {
 
 let barSig = '';
 let techSig = '';
+let seenLog = 0;
+
+const eventIcon = (id: string) => (id === 'blizzard' ? '❄️' : '🤒');
+
+function activeEvents() {
+  return state.active.flatMap((a) => {
+    const e = EVENTS.find((x) => x.id === a.id);
+    return e ? [{ text: `${eventIcon(e.id)} ${e.name}: ещё ${Math.max(0, a.until - state.tick)} ч` }] : [];
+  });
+}
+
+function renderEvents() {
+  const recent = state.log.slice(-3).reverse().map((l) => `<small>${RU.day} ${((l.tick / 24) | 0) + 1}, ${String(l.tick % 24).padStart(2, '0')}:00 · ${l.text}</small>`).join('');
+  const act = activeEvents().map((a) => `<div class="ev">${a.text}</div>`).join('');
+  eventsEl.innerHTML = act || recent ? `<h3>${RU.events}</h3>${act}${recent}` : '';
+  if (state.log.length < seenLog) seenLog = 0;
+  if (state.log.length > seenLog) {
+    showBanner(state.log[state.log.length - 1]!.text);
+    seenLog = state.log.length;
+  }
+}
 
 function renderTechs() {
   $('kn').textContent = String(state.res.knowledge | 0);
@@ -172,11 +195,12 @@ function renderPanels() {
   if (workplaces > living.length) hints.push(RU.noWorker);
   if (flash && flash.until < performance.now()) flash = null;
   const over = isGameOver(state);
-  const text = over ? RU.gameOver : flash?.text ?? hints[0] ?? '';
+  const text = over ? RU.gameOver : flash?.text ?? hints[0] ?? activeEvents()[0]?.text ?? '';
   alertEl.hidden = !text;
   alertEl.textContent = text;
   alertEl.classList.toggle('bad', over || !!flash);
 
+  renderEvents();
   renderTechs();
 
   const sig = KINDS.map((k) => (canAfford(state.res, k) ? 1 : 0)).join('') + (state.res.wood | 0) + (state.res.stone | 0);
@@ -306,6 +330,7 @@ function restart() {
   state = initialState();
   lastEra = 0;
   techSig = '';
+  seenLog = 0;
   rates.reset();
   schedule();
   draw();

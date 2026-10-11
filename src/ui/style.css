@@ -65,6 +65,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .goals li.done { color: var(--good); text-decoration: line-through; text-decoration-color: #7ddc9c66; }
 .goals li.next { color: #fff; font-weight: 600; }
 .goals li small { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+#events .ev { padding: 6px 10px; margin-bottom: 4px; background: #2a1a1a; border: 1px solid #a55; border-radius: 8px; color: #fbb; }
+#events small { display: block; color: #a88; font-size: 12px; padding: 1px 0; }
 #techs { display: grid; gap: 6px; }
 .tech { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #201a2e; border: 1px solid #546; border-radius: 8px; color: #dcf; text-align: left; font-size: 13px; min-height: 44px; }
 .tech small { color: #ba9; font-size: 12px; }
