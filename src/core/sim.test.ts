@@ -92,3 +92,34 @@ describe('технологии', () => {
     expect(research(research(rich, 'boiling')!, 'boiling')).toBeNull();
   });
 });
+
+import { rand, ambientShift } from './sim';
+import { EVENTS } from '../data/events';
+
+describe('события', () => {
+  it('rand детерминирован и в диапазоне', () => {
+    const s = initialState();
+    expect(rand(s, 1)).toBe(rand(s, 1));
+    for (let i = 0; i < 100; i++) { const r = rand({ ...s, tick: i }, 2); expect(r).toBeGreaterThanOrEqual(0); expect(r).toBeLessThan(1); }
+  });
+  it('до порога событий нет, затем метель случается и охлаждает карту', () => {
+    let s = { ...initialState(), res: { wood: 0, stone: 0, food: 1e6, water: 1e6, knowledge: 0 } };
+    let sawBlizzard = false;
+    for (let i = 0; i < 1500 && !sawBlizzard; i++) {
+      s = step(s);
+      if (s.tick < 48) expect(s.active.length).toBe(0);
+      if (s.active.some((a) => a.id === 'blizzard')) {
+        sawBlizzard = true;
+        expect(ambientShift(s)).toBe(EVENTS.find((e) => e.id === 'blizzard')!.ambientDelta);
+        expect(tempAt(s, 0, 0)).toBeLessThan(AMBIENT);
+        expect(s.log.length).toBeGreaterThan(0);
+      }
+    }
+    expect(sawBlizzard).toBe(true);
+  });
+  it('событие заканчивается', () => {
+    let s = { ...initialState(), active: [{ id: 'blizzard', until: 5 }], tick: 4 };
+    s = step(s);
+    expect(s.active.length).toBe(0);
+  });
+});

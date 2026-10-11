@@ -5,6 +5,7 @@ import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 import { ERAS } from './data/eras';
 import { TECHS } from './data/techs';
+import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
 
 const TICK_MS = 500;
@@ -16,6 +17,15 @@ let lastEra = 0;
 let banner = '';
 let barSig = '';
 let techSig = '';
+
+function drawEvents() {
+  const act = state.active.map((a) => {
+    const e = EVENTS.find((x) => x.id === a.id);
+    return e ? `<div>${e.id === 'blizzard' ? '❄️' : '🤒'} ${e.name}: ещё ${Math.max(0, a.until - state.tick)} ч</div>` : '';
+  }).join('');
+  const recent = state.log.slice(-3).reverse().map((l) => `<small>День ${(l.tick / 24) | 0}, ${l.tick % 24} ч: ${l.text}</small>`).join('');
+  eventsEl.innerHTML = act + recent;
+}
 
 function drawTechs() {
   const kn = document.getElementById('kn');
@@ -51,6 +61,9 @@ root.innerHTML = `
   #goals .era span.cur{color:#fff;font-weight:600}
   #goals ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:2px 12px}
   #goals li.done{color:#6c9}
+  #events{padding:0 8px;font-size:13px;background:#1a1414}
+  #events div{padding:4px 0;color:#f99}
+  #events small{display:block;color:#a88}
   #techs{display:flex;flex-wrap:wrap;gap:6px;padding:6px 8px;background:#14121c;align-items:stretch}
   #techs b{width:100%;font-size:13px;color:#b9f}
   #techs button{min-height:44px;padding:6px 10px;border:1px solid #546;background:#201a2e;color:#dcf;border-radius:6px;font-size:13px;text-align:left;max-width:240px}
@@ -72,11 +85,12 @@ root.innerHTML = `
   #intro button{min-height:44px;width:100%;font-size:16px;background:#2d6a4f;color:#fff;border:0;border-radius:6px}
   #view{touch-action:none}#view canvas{display:block}
 </style>
-<div id="hud"></div><div id="goals"></div><div id="techs"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
+<div id="hud"></div><div id="goals"></div><div id="events"></div><div id="techs"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
 const hud = root.querySelector<HTMLElement>('#hud')!;
 const bar = root.querySelector<HTMLElement>('#bar')!;
 const msg = root.querySelector<HTMLElement>('#msg')!;
 const view = root.querySelector<HTMLElement>('#view')!;
+const eventsEl = root.querySelector<HTMLElement>('#events')!;
 const techsEl = root.querySelector<HTMLElement>('#techs')!;
 const goalsEl = root.querySelector<HTMLElement>('#goals')!;
 const needs = root.querySelector<HTMLElement>('#needs')!;
@@ -155,6 +169,7 @@ function draw() {
       : `<div>${RU.eraSoon}</div>`);
   const sig = (Object.keys(BUILDINGS) as BuildingKind[]).map((k) => (canAfford(state.res, k) ? 1 : 0)).join('');
   if (sig !== barSig) { barSig = sig; buildBar(); }
+  drawEvents();
   drawTechs();
   hud.textContent = `${RU.day} ${(state.tick / 24) | 0} · 👥 ${living.length} · 🍎 ${r.food | 0} · 💧 ${r.water | 0} · 🪵 ${r.wood | 0} · 🪨 ${r.stone | 0} · 📖 ${r.knowledge | 0}`;
   const avg = (k: 'warmth' | 'hunger' | 'thirst' | 'health') => living.length ? living.reduce((a, p) => a + p[k], 0) / living.length : 0;
