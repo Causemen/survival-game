@@ -1,4 +1,6 @@
-import { BUILDINGS, HUT_CAPACITY, PRODUCTION } from '../data/buildings';
+import { BUILDINGS, FOOD_RESTORE, HUNGER_DROP, HUT_CAPACITY, PRODUCTION, START_RES, THIRST_DROP, WATER_RESTORE } from '../data/buildings';
+import { EVENTS } from '../data/events';
+import { TECHS } from '../data/techs';
 import { eraDone } from './goals';
 import type { BuildingKind, Resources, Settler, State } from './types';
 
@@ -25,17 +27,32 @@ export function initialState(): State {
   }));
   return {
     tick: 0, w, h, reactor, buildings: [], settlers,
-    res: { wood: 60, stone: 20, food: 60, water: 60, knowledge: 0 },
+    res: { ...START_RES },
     nextId: 100,
     era: 0,
+    techs: [],
+    seed: 1,
+    active: [],
+    log: [],
   };
+}
+
+const activeEvents = (s: State) => s.active.flatMap((a) => EVENTS.filter((e) => e.id === a.id));
+export const ambientShift = (s: State): number => activeEvents(s).reduce((a, e) => a + (e.ambientDelta ?? 0), 0);
+
+/** Детерминированный «случайный» ответ [0,1) для (тик, соль): симуляция воспроизводима. */
+export function rand(s: State, salt: number): number {
+  let x = (s.seed + s.tick * 7919 + salt * 104729) | 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 }
 
 /** Температура клетки: холод окружающей среды + тепло реактора и костров. */
 export function tempAt(s: State, x: number, y: number): number {
   const d = Math.hypot(x - s.reactor.x, y - s.reactor.y);
   const R = reactorRadius(s.reactor.level);
-  let t = AMBIENT + 45 * Math.max(0, 1 - d / R);
+  let t = AMBIENT + ambientShift(s) + 45 * Math.max(0, 1 - d / R);
   for (const b of s.buildings) {
     if (b.kind !== 'campfire') continue;
     t += 25 * Math.max(0, 1 - Math.hypot(x - b.x, y - b.y) / 2.5);
@@ -66,6 +83,38 @@ export function build(s: State, kind: BuildingKind, x: number, y: number): State
   };
 }
 
+/** Множитель производства здания от изученных технологий. */
+export function prodMult(s: State, kind: BuildingKind): number {
+  return s.techs.reduce((m, id) => m * (TECHS.find((t) => t.id === id)?.prod?.[kind] ?? 1), 1);
+}
+const techSum = (s: State, f: 'hutCapacity' | 'hutWarmth'): number =>
+  s.techs.reduce((a, id) => a + (TECHS.find((t) => t.id === id)?.[f] ?? 0), 0);
+
+/** Изучает технологию за знания; null, если нельзя. */
+export function research(s: State, id: string): State | null {
+  const t = TECHS.find((x) => x.id === id);
+  if (!t || s.techs.includes(id) || s.era < t.era || s.res.knowledge < t.cost) return null;
+  if (t.requires?.some((r) => !s.techs.includes(r))) return null;
+  return { ...s, techs: [...s.techs, id], res: { ...s.res, knowledge: s.res.knowledge - t.cost } };
+}
+
+/** Завершает истёкшие события и с заданным шансом запускает новые. */
+function updateEvents(s: State): State {
+  let { active, log } = s;
+  for (const a of active.filter((x) => x.until <= s.tick)) {
+    log = [...log, { tick: s.tick, text: EVENTS.find((e) => e.id === a.id)?.endText ?? '' }];
+  }
+  active = active.filter((a) => a.until > s.tick);
+  EVENTS.forEach((e, i) => {
+    if (s.tick < e.from || active.some((a) => a.id === e.id)) return;
+    if (rand(s, i + 1) < e.chance) {
+      active = [...active, { id: e.id, until: s.tick + e.duration }];
+      log = [...log, { tick: s.tick, text: e.startText }];
+    }
+  });
+  return { ...s, active, log: log.slice(-6) };
+}
+
 export const alive = (s: State): Settler[] => s.settlers.filter((p) => p.alive);
 export const isGameOver = (s: State): boolean => alive(s).length === 0;
 
@@ -87,12 +136,12 @@ export function step(s: State): State {
     if (![...workerOf.values()].includes(b.id)) continue;
     const prod = PRODUCTION[b.kind];
     if (!prod) continue;
-    for (const k of Object.keys(prod) as (keyof Resources)[]) res[k] += prod[k] ?? 0;
+    for (const k of Object.keys(prod) as (keyof Resources)[]) res[k] += (prod[k] ?? 0) * prodMult(s, b.kind);
   }
   res.knowledge += living.length * 0.1;
 
   const huts = s.buildings.filter((b) => b.kind === 'hut').length;
-  let housed = huts * HUT_CAPACITY;
+  let housed = huts * (HUT_CAPACITY + techSum(s, 'hutCapacity'));
 
   const settlers = s.settlers.map((p): Settler => {
     if (!p.alive) return p;
@@ -101,22 +150,27 @@ export function step(s: State): State {
     const x = wb ? wb.x : s.reactor.x + ((p.id % 3) - 1);
     const y = wb ? wb.y : s.reactor.y + 1;
     let temp = tempAt(s, x, y);
-    if (housed > 0) {
+    const inHut = housed > 0;
+    if (inHut) {
       housed--;
-      temp += 12;
+      temp += 12 + techSum(s, 'hutWarmth');
     }
     let { warmth, hunger, thirst, health } = p;
     warmth = clamp(warmth + clamp((temp - COMFORT) * 0.08, -3, 1), 0, 100);
-    hunger = clamp(hunger - 0.4, 0, 100);
-    thirst = clamp(thirst - 0.6, 0, 100);
-    if (hunger < 50 && res.food >= 1) { res.food -= 1; hunger = clamp(hunger + 30, 0, 100); }
-    if (thirst < 50 && res.water >= 1) { res.water -= 1; thirst = clamp(thirst + 30, 0, 100); }
+    hunger = clamp(hunger - HUNGER_DROP, 0, 100);
+    thirst = clamp(thirst - THIRST_DROP, 0, 100);
+    if (hunger < 50 && res.food >= 1) { res.food -= 1; hunger = clamp(hunger + FOOD_RESTORE, 0, 100); }
+    if (thirst < 50 && res.water >= 1) { res.water -= 1; thirst = clamp(thirst + WATER_RESTORE, 0, 100); }
     const suffering = warmth <= 0 || hunger <= 0 || thirst <= 0;
     health = suffering ? health - 1.5 : warmth > 30 && hunger > 30 && thirst > 30 ? Math.min(100, health + 0.2) : health;
+    for (const e of activeEvents(s)) {
+      if (e.sickness && !inHut && warmth < e.sickness.warmthBelow) health -= e.sickness.healthLoss;
+    }
     return { ...p, x, y, warmth, hunger, thirst, health, alive: health > 0 };
   });
 
-  const next: State = { ...s, tick: s.tick + 1, res, settlers };
+  let next: State = { ...s, tick: s.tick + 1, res, settlers };
+  next = updateEvents(next);
   // Эпоха пройдена: награда — реактор усиливается (больше радиус тепла) и приходят знания.
   if (eraDone(next)) {
     return { ...next, era: next.era + 1, reactor: { ...next.reactor, level: next.reactor.level + 1 }, res: { ...res, knowledge: res.knowledge + 20 } };
