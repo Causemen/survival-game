@@ -47,4 +47,5 @@ export interface State {
   res: Resources;
   nextId: number;
   era: number;
+  techs: string[];
 }

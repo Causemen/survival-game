@@ -72,3 +72,23 @@ describe('цели и эпохи', () => {
     expect(s.reactor.level).toBe(2);
   });
 });
+
+import { research } from './sim';
+
+describe('технологии', () => {
+  it('изучение тратит знания и усиливает производство', () => {
+    let s = build(initialState(), 'purifier', 1, 1)!;
+    const before = step(s).res.water - s.res.water;
+    s = { ...s, res: { ...s.res, knowledge: 50 } };
+    s = research(s, 'boiling')!;
+    expect(s.res.knowledge).toBe(38);
+    expect(step(s).res.water - s.res.water).toBeGreaterThan(before);
+  });
+  it('нельзя без знаний, дважды и без требований', () => {
+    const s = initialState();
+    expect(research(s, 'boiling')).toBeNull();
+    const rich = { ...s, res: { ...s.res, knowledge: 100 } };
+    expect(research(rich, 'shelters')).toBeNull();
+    expect(research(research(rich, 'boiling')!, 'boiling')).toBeNull();
+  });
+});

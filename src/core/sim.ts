@@ -1,4 +1,5 @@
 import { BUILDINGS, HUT_CAPACITY, PRODUCTION } from '../data/buildings';
+import { TECHS } from '../data/techs';
 import { eraDone } from './goals';
 import type { BuildingKind, Resources, Settler, State } from './types';
 
@@ -28,6 +29,7 @@ export function initialState(): State {
     res: { wood: 60, stone: 20, food: 60, water: 60, knowledge: 0 },
     nextId: 100,
     era: 0,
+    techs: [],
   };
 }
 
@@ -66,6 +68,21 @@ export function build(s: State, kind: BuildingKind, x: number, y: number): State
   };
 }
 
+/** Множитель производства здания от изученных технологий. */
+export function prodMult(s: State, kind: BuildingKind): number {
+  return s.techs.reduce((m, id) => m * (TECHS.find((t) => t.id === id)?.prod?.[kind] ?? 1), 1);
+}
+const techSum = (s: State, f: 'hutCapacity' | 'hutWarmth'): number =>
+  s.techs.reduce((a, id) => a + (TECHS.find((t) => t.id === id)?.[f] ?? 0), 0);
+
+/** Изучает технологию за знания; null, если нельзя. */
+export function research(s: State, id: string): State | null {
+  const t = TECHS.find((x) => x.id === id);
+  if (!t || s.techs.includes(id) || s.era < t.era || s.res.knowledge < t.cost) return null;
+  if (t.requires?.some((r) => !s.techs.includes(r))) return null;
+  return { ...s, techs: [...s.techs, id], res: { ...s.res, knowledge: s.res.knowledge - t.cost } };
+}
+
 export const alive = (s: State): Settler[] => s.settlers.filter((p) => p.alive);
 export const isGameOver = (s: State): boolean => alive(s).length === 0;
 
@@ -87,12 +104,12 @@ export function step(s: State): State {
     if (![...workerOf.values()].includes(b.id)) continue;
     const prod = PRODUCTION[b.kind];
     if (!prod) continue;
-    for (const k of Object.keys(prod) as (keyof Resources)[]) res[k] += prod[k] ?? 0;
+    for (const k of Object.keys(prod) as (keyof Resources)[]) res[k] += (prod[k] ?? 0) * prodMult(s, b.kind);
   }
   res.knowledge += living.length * 0.1;
 
   const huts = s.buildings.filter((b) => b.kind === 'hut').length;
-  let housed = huts * HUT_CAPACITY;
+  let housed = huts * (HUT_CAPACITY + techSum(s, 'hutCapacity'));
 
   const settlers = s.settlers.map((p): Settler => {
     if (!p.alive) return p;
@@ -103,7 +120,7 @@ export function step(s: State): State {
     let temp = tempAt(s, x, y);
     if (housed > 0) {
       housed--;
-      temp += 12;
+      temp += 12 + techSum(s, 'hutWarmth');
     }
     let { warmth, hunger, thirst, health } = p;
     warmth = clamp(warmth + clamp((temp - COMFORT) * 0.08, -3, 1), 0, 100);

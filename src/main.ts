@@ -1,9 +1,10 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, initialState, isGameOver, step, tempAt } from './core/sim';
+import { alive, build, canAfford, research, initialState, isGameOver, step, tempAt } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 import { ERAS } from './data/eras';
+import { TECHS } from './data/techs';
 import { goalProgress } from './core/goals';
 
 const TICK_MS = 500;
@@ -14,6 +15,26 @@ let selected: BuildingKind = 'gatherer';
 let lastEra = 0;
 let banner = '';
 let barSig = '';
+let techSig = '';
+
+function drawTechs() {
+  const kn = document.getElementById('kn');
+  if (kn) kn.textContent = String(state.res.knowledge | 0);
+  const sig = `${state.techs.join()}|${state.era}|${TECHS.map((t) => (state.res.knowledge >= t.cost ? 1 : 0)).join('')}`;
+  if (sig === techSig) return;
+  techSig = sig;
+  techsEl.innerHTML = `<b>${RU.techs} · ${RU.knowledge} 📖 <span id="kn"></span></b>`;
+  for (const t of TECHS.filter((x) => x.era <= state.era)) {
+    const b = document.createElement('button');
+    const done = state.techs.includes(t.id);
+    const locked = !done && (state.res.knowledge < t.cost || !!t.requires?.some((r) => !state.techs.includes(r)));
+    b.className = done ? 'done' : locked ? 'no' : '';
+    const need = t.requires?.filter((r) => !state.techs.includes(r)).map((r) => TECHS.find((x) => x.id === r)?.name).join(', ');
+    b.innerHTML = `${done ? '✓ ' : ''}${t.name}<small>${done ? RU.learned : `${t.cost} знаний`}${need ? ` · нужно: ${need}` : ''}</small><small>${t.desc}</small>`;
+    b.onclick = () => { const n = research(state, t.id); if (n) { state = n; draw(); } else msg.textContent = RU.cantResearch; };
+    techsEl.append(b);
+  }
+}
 
 const root = document.getElementById('app')!;
 root.innerHTML = `
@@ -30,6 +51,12 @@ root.innerHTML = `
   #goals .era span.cur{color:#fff;font-weight:600}
   #goals ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:2px 12px}
   #goals li.done{color:#6c9}
+  #techs{display:flex;flex-wrap:wrap;gap:6px;padding:6px 8px;background:#14121c;align-items:stretch}
+  #techs b{width:100%;font-size:13px;color:#b9f}
+  #techs button{min-height:44px;padding:6px 10px;border:1px solid #546;background:#201a2e;color:#dcf;border-radius:6px;font-size:13px;text-align:left;max-width:240px}
+  #techs button small{display:block;font-size:12px;color:#ba9}
+  #techs button.done{border-color:#6c9;color:#6c9}
+  #techs button.no{opacity:.5}
   #bar button.no{opacity:.5}
   #bar button small{display:block;font-size:12px;color:#fc8}
   #bar button.on small{color:#fff}
@@ -45,11 +72,12 @@ root.innerHTML = `
   #intro button{min-height:44px;width:100%;font-size:16px;background:#2d6a4f;color:#fff;border:0;border-radius:6px}
   #view{touch-action:none}#view canvas{display:block}
 </style>
-<div id="hud"></div><div id="goals"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
+<div id="hud"></div><div id="goals"></div><div id="techs"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
 const hud = root.querySelector<HTMLElement>('#hud')!;
 const bar = root.querySelector<HTMLElement>('#bar')!;
 const msg = root.querySelector<HTMLElement>('#msg')!;
 const view = root.querySelector<HTMLElement>('#view')!;
+const techsEl = root.querySelector<HTMLElement>('#techs')!;
 const goalsEl = root.querySelector<HTMLElement>('#goals')!;
 const needs = root.querySelector<HTMLElement>('#needs')!;
 const info = root.querySelector<HTMLElement>('#info')!;
@@ -127,6 +155,7 @@ function draw() {
       : `<div>${RU.eraSoon}</div>`);
   const sig = (Object.keys(BUILDINGS) as BuildingKind[]).map((k) => (canAfford(state.res, k) ? 1 : 0)).join('');
   if (sig !== barSig) { barSig = sig; buildBar(); }
+  drawTechs();
   hud.textContent = `${RU.day} ${(state.tick / 24) | 0} · 👥 ${living.length} · 🍎 ${r.food | 0} · 💧 ${r.water | 0} · 🪵 ${r.wood | 0} · 🪨 ${r.stone | 0} · 📖 ${r.knowledge | 0}`;
   const avg = (k: 'warmth' | 'hunger' | 'thirst' | 'health') => living.length ? living.reduce((a, p) => a + p[k], 0) / living.length : 0;
   needs.innerHTML = (['warmth', 'hunger', 'thirst', 'health'] as const).map((k) => {
@@ -166,7 +195,7 @@ await app.init({ background: '#0b0f14', antialias: true, width: 10, height: 10 }
 view.append(app.canvas);
 app.stage.addChild(layer);
 app.canvas.addEventListener('pointerdown', (e) => {
-  if (isGameOver(state)) { state = initialState(); lastEra = 0; banner = ''; msg.textContent = ''; schedule(); draw(); return; }
+  if (isGameOver(state)) { state = initialState(); lastEra = 0; banner = ''; techSig = ''; msg.textContent = ''; schedule(); draw(); return; }
   const rect = app.canvas.getBoundingClientRect();
   const x = Math.floor((e.clientX - rect.left) / cell), y = Math.floor((e.clientY - rect.top) / cell);
   const next = build(state, selected, x, y);
