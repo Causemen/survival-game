@@ -5,7 +5,6 @@ import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 
 const TICK_MS = 500;
-const GLYPH: Record<BuildingKind, string> = { hut: 'Х', campfire: 'К', gatherer: 'С', woodcutter: 'Л', quarry: 'М', purifier: 'В' };
 
 let state: State = initialState();
 let speed = 1;
@@ -20,24 +19,50 @@ root.innerHTML = `
   #bar button{min-height:44px;min-width:44px;padding:6px 10px;border:1px solid #345;background:#1a2635;color:#cfe;border-radius:6px;font-size:14px}
   #bar button.on{background:#2d6a4f;border-color:#6c9}
   #msg{padding:4px 8px;min-height:20px;color:#fb7;font-size:13px}
+  #info{padding:4px 8px;font-size:13px;color:#9ab}
+  #needs{display:flex;flex-wrap:wrap;gap:4px 14px;padding:4px 8px;font-size:13px;background:#0e141c}
+  .bar{display:inline-block;width:60px;height:8px;background:#233;border-radius:4px;vertical-align:middle;margin-left:4px}
+  .bar i{display:block;height:100%;border-radius:4px}
+  #legend{padding:4px 8px;font-size:12px;color:#789}
+  #intro{position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;padding:12px;z-index:10}
+  #intro div{max-width:520px;max-height:100%;overflow:auto;background:#16202c;border:1px solid #456;border-radius:10px;padding:16px;line-height:1.45;font-size:15px}
+  #intro[hidden]{display:none}
+  #intro p{margin:0 0 10px}
+  #intro button{min-height:44px;width:100%;font-size:16px;background:#2d6a4f;color:#fff;border:0;border-radius:6px}
   #view{touch-action:none}#view canvas{display:block}
 </style>
-<div id="hud"></div><div id="bar"></div><div id="msg"></div><div id="view"></div>`;
+<div id="hud"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
 const hud = root.querySelector<HTMLElement>('#hud')!;
 const bar = root.querySelector<HTMLElement>('#bar')!;
 const msg = root.querySelector<HTMLElement>('#msg')!;
 const view = root.querySelector<HTMLElement>('#view')!;
+const needs = root.querySelector<HTMLElement>('#needs')!;
+const info = root.querySelector<HTMLElement>('#info')!;
+const intro = root.querySelector<HTMLElement>('#intro')!;
+root.querySelector<HTMLElement>('#legend')!.textContent = RU.legend;
+
+function showIntro() {
+  speed = 0; schedule(); buildBar();
+  intro.innerHTML = `<div><h2 style="margin-top:0">${RU.title}</h2>${RU.intro.map((t) => `<p>${t}</p>`).join('')}<button>${RU.start}</button></div>`;
+  intro.hidden = false;
+  intro.querySelector('button')!.onclick = () => { intro.hidden = true; speed = 1; schedule(); buildBar(); };
+}
 
 function buildBar() {
   bar.innerHTML = '';
   for (const kind of Object.keys(BUILDINGS) as BuildingKind[]) {
     const c = BUILDINGS[kind].cost;
     const b = document.createElement('button');
-    b.textContent = `${RU.buildings[kind]} (${c.wood ?? 0}д${c.stone ? ` ${c.stone}к` : ''})`;
+    b.textContent = `${RU.icons[kind]} ${RU.buildings[kind]} · ${c.wood ?? 0}🪵${c.stone ? ` ${c.stone}🪨` : ''}`;
     b.className = kind === selected ? 'on' : '';
     b.onclick = () => { selected = kind; buildBar(); };
     bar.append(b);
   }
+  info.textContent = `${RU.icons[selected]} ${RU.buildings[selected]}: ${RU.desc[selected]}`;
+  const help = document.createElement('button');
+  help.textContent = RU.help;
+  help.onclick = showIntro;
+  bar.append(help);
   for (const [label, sp] of [[RU.pause, 0], ['1x', 1], ['2x', 2], ['4x', 4]] as const) {
     const b = document.createElement('button');
     b.textContent = label;
@@ -68,12 +93,27 @@ function draw() {
   for (const p of alive(state)) g.circle((p.x + 0.5) * cell + (p.id % 5) * 3 - 6, (p.y + 0.5) * cell + (p.id % 3) * 3 - 3, cell * 0.12).fill(0xffffff);
   layer.addChild(g);
   for (const b of state.buildings) {
-    const t = new Text({ text: GLYPH[b.kind], style: { fontSize: cell * 0.5, fill: 0xffffff } });
+    const t = new Text({ text: RU.icons[b.kind], style: { fontSize: cell * 0.5, fill: 0xffffff } });
     t.position.set(b.x * cell + cell * 0.28, b.y * cell + cell * 0.2);
     layer.addChild(t);
   }
   const r = state.res;
-  hud.textContent = `${RU.day} ${(state.tick / 24) | 0} · ${RU.people} ${alive(state).length} · ${RU.food} ${r.food | 0} · ${RU.water} ${r.water | 0} · ${RU.wood} ${r.wood | 0} · ${RU.stone} ${r.stone | 0} · ${RU.knowledge} ${r.knowledge | 0}`;
+  const living = alive(state);
+  hud.textContent = `${RU.day} ${(state.tick / 24) | 0} · 👥 ${living.length} · 🍎 ${r.food | 0} · 💧 ${r.water | 0} · 🪵 ${r.wood | 0} · 🪨 ${r.stone | 0} · 📖 ${r.knowledge | 0}`;
+  const avg = (k: 'warmth' | 'hunger' | 'thirst' | 'health') => living.length ? living.reduce((a, p) => a + p[k], 0) / living.length : 0;
+  needs.innerHTML = (['warmth', 'hunger', 'thirst', 'health'] as const).map((k) => {
+    const v = avg(k);
+    const col = v > 60 ? '#6c9' : v > 30 ? '#eb5' : '#e55';
+    return `<span>${RU.needs[k]}<span class="bar"><i style="width:${v}%;background:${col}"></i></span></span>`;
+  }).join('');
+  const workplaces = state.buildings.filter((b) => BUILDINGS[b.kind].worker).length;
+  const hints: string[] = [];
+  if (avg('warmth') < 35) hints.push(RU.freezing);
+  if (r.food < 15 || avg('hunger') < 35) hints.push(RU.starving);
+  if (r.water < 15 || avg('thirst') < 35) hints.push(RU.thirsty);
+  if (r.wood < 15) hints.push(RU.noWood);
+  if (workplaces > living.length) hints.push(RU.noWorker);
+  if (!isGameOver(state)) msg.textContent = hints[0] ?? '';
 }
 
 function resize() {
@@ -103,11 +143,10 @@ app.canvas.addEventListener('pointerdown', (e) => {
   const x = Math.floor((e.clientX - rect.left) / cell), y = Math.floor((e.clientY - rect.top) / cell);
   const next = build(state, selected, x, y);
   if (!next) { msg.textContent = RU.cantBuild; return; }
-  msg.textContent = '';
   state = next;
   draw();
 });
 addEventListener('resize', resize);
 buildBar();
 resize();
-schedule();
+showIntro();
