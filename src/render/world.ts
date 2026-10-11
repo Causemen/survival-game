@@ -1,0 +1,73 @@
+import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { alive, tempAt } from '../core/sim';
+import type { State } from '../core/types';
+import { RU } from '../i18n';
+import type { Art } from './assets';
+
+/** 0 — смертельный холод, 1 — комфортное тепло. */
+const warmthOf = (t: number) => Math.max(0, Math.min(1, (t + 20) / 55));
+
+function tempColor(t: number): number {
+  const k = warmthOf(t);
+  const r = Math.round(20 + 200 * k), g = Math.round(40 + 70 * k), b = Math.round(90 - 60 * k);
+  return (r << 16) | (g << 8) | b;
+}
+
+/** Спрайт, вписанный в рамку size×size с низом по точке (cx, bottom): так здания «стоят» на клетке. */
+function place(tex: Texture, cx: number, bottom: number, size: number): Sprite {
+  const s = new Sprite(tex);
+  const k = size / Math.max(tex.width, tex.height);
+  s.scale.set(k);
+  s.anchor.set(0.5, 1);
+  s.position.set(cx, bottom);
+  return s;
+}
+
+/** Рисует карту. Где картинки есть — спрайты, где нет — прежняя процедурная графика. */
+export function drawWorld(layer: Container, state: State, cell: number, art: Art) {
+  const g = new Graphics();
+  const textured = !!art.groundCold;
+  const tint = new Graphics();
+  for (let y = 0; y < state.h; y++)
+    for (let x = 0; x < state.w; x++) {
+      const t = tempAt(state, x, y);
+      if (!textured) {
+        g.rect(x * cell, y * cell, cell - 1, cell - 1).fill(tempColor(t));
+        continue;
+      }
+      for (const [tex, alpha] of [[art.groundCold!, 1], [art.groundWarm, warmthOf(t)]] as const) {
+        if (!tex || alpha <= 0) continue;
+        const s = new Sprite(tex);
+        s.position.set(x * cell, y * cell);
+        s.setSize(cell, cell);
+        s.alpha = alpha;
+        layer.addChild(s);
+      }
+      // Лёгкий оттенок, чтобы температура читалась и на картинках.
+      tint.rect(x * cell, y * cell, cell, cell).fill({ color: tempColor(t), alpha: 0.25 });
+    }
+  if (textured) layer.addChild(tint);
+  layer.addChild(g);
+
+  const rx = (state.reactor.x + 0.5) * cell, ry = state.reactor.y * cell;
+  if (art.reactor) layer.addChild(place(art.reactor, rx, ry + cell, cell * 1.3));
+  else g.circle(rx, ry + cell / 2, cell * 0.45).fill(0xffe066);
+
+  for (const b of state.buildings) {
+    const tex = art[b.kind];
+    if (tex) {
+      layer.addChild(place(tex, (b.x + 0.5) * cell, (b.y + 1) * cell - 1, cell * 0.95));
+      continue;
+    }
+    g.rect(b.x * cell + 3, b.y * cell + 3, cell - 7, cell - 7).fill(0x2d6a4f);
+    const t = new Text({ text: RU.icons[b.kind], style: { fontSize: cell * 0.5, fill: 0xffffff } });
+    t.position.set(b.x * cell + cell * 0.28, b.y * cell + cell * 0.2);
+    layer.addChild(t);
+  }
+
+  for (const p of alive(state)) {
+    const px = (p.x + 0.5) * cell + (p.id % 5) * 3 - 6, py = (p.y + 0.5) * cell + (p.id % 3) * 3 - 3;
+    if (art.settler) layer.addChild(place(art.settler, px, py + cell * 0.2, cell * 0.45));
+    else g.circle(px, py, cell * 0.12).fill(0xffffff);
+  }
+}

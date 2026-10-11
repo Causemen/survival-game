@@ -1,10 +1,12 @@
-import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, initialState, isGameOver, step, tempAt } from './core/sim';
+import { Application, Container } from 'pixi.js';
+import { alive, build, canAfford, initialState, isGameOver, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 import { ERAS } from './data/eras';
 import { goalProgress } from './core/goals';
+import { loadArt } from './render/assets';
+import { drawWorld } from './render/world';
 
 const TICK_MS = 500;
 
@@ -93,27 +95,9 @@ const app = new Application();
 const layer = new Container();
 let cell = 32;
 
-function tempColor(t: number): number {
-  const k = Math.max(0, Math.min(1, (t + 20) / 55));
-  const r = Math.round(20 + 200 * k), g = Math.round(40 + 70 * k), b = Math.round(90 - 60 * k);
-  return (r << 16) | (g << 8) | b;
-}
-
 function draw() {
   layer.removeChildren().forEach((c) => c.destroy());
-  const g = new Graphics();
-  for (let y = 0; y < state.h; y++)
-    for (let x = 0; x < state.w; x++)
-      g.rect(x * cell, y * cell, cell - 1, cell - 1).fill(tempColor(tempAt(state, x, y)));
-  g.circle((state.reactor.x + 0.5) * cell, (state.reactor.y + 0.5) * cell, cell * 0.45).fill(0xffe066);
-  for (const b of state.buildings) g.rect(b.x * cell + 3, b.y * cell + 3, cell - 7, cell - 7).fill(0x2d6a4f);
-  for (const p of alive(state)) g.circle((p.x + 0.5) * cell + (p.id % 5) * 3 - 6, (p.y + 0.5) * cell + (p.id % 3) * 3 - 3, cell * 0.12).fill(0xffffff);
-  layer.addChild(g);
-  for (const b of state.buildings) {
-    const t = new Text({ text: RU.icons[b.kind], style: { fontSize: cell * 0.5, fill: 0xffffff } });
-    t.position.set(b.x * cell + cell * 0.28, b.y * cell + cell * 0.2);
-    layer.addChild(t);
-  }
+  drawWorld(layer, state, cell, art);
   const r = state.res;
   const living = alive(state);
   if (state.era > lastEra) { lastEra = state.era; banner = RU.eraDone; }
@@ -162,6 +146,7 @@ function tick() {
   draw();
 }
 
+const art = await loadArt();
 await app.init({ background: '#0b0f14', antialias: true, width: 10, height: 10 });
 view.append(app.canvas);
 app.stage.addChild(layer);
