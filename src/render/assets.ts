@@ -24,6 +24,7 @@ export type Art = Partial<Record<ArtKey, Texture>>;
 /** Тайлы земли заполняют клетку целиком, остальное — спрайты на фоне, который нужно вырезать. */
 const TILES: ArtKey[] = ['groundCold', 'groundWarm'];
 const MAX_SIDE = 256;
+const PIXEL_ART_MAX = 64;
 
 
 export async function loadArt(): Promise<Art> {
@@ -31,7 +32,11 @@ export async function loadArt(): Promise<Art> {
   await Promise.all(
     (Object.keys(ART_FILES) as ArtKey[]).map(async (key) => {
       const img = await loadImage(`${import.meta.env.BASE_URL}assets/${ART_FILES[key]}`);
-      if (img) art[key] = Texture.from(prepare(img, !TILES.includes(key)));
+      if (!img) return;
+      const tex = Texture.from(prepare(img, !TILES.includes(key)));
+      // Маленькие картинки — пиксель-арт: увеличиваем без размытия.
+      if (Math.max(img.width, img.height) <= PIXEL_ART_MAX) tex.source.scaleMode = 'nearest';
+      art[key] = tex;
     }),
   );
   return art;
