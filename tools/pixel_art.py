@@ -415,13 +415,13 @@ def woodcutter():
     c = Canvas(64, 64)
     for (x0, y0) in ((38, 44), (50, 44), (32, 33), (44, 33), (38, 22)):             # поленница: торцы
         pass
-    for row, xs in ((50, (40, 51, 62)), (40, (45.5, 56.5)), (30, (51,))):
+    for row, xs in ((50, (38, 49, 60)), (40, (43.5, 54.5)), (30, (49,))):
         for x in xs:
             c.lit_ellipse(x - 4, row + 3, 5.5, 5.5, WOOD_D)
             c.lit_ellipse(x - 4, row + 3, 4.2, 4.2, WOOD_L)
             c.lit_ellipse(x - 4, row + 3, 2.4, 2.4, WOOD)
             c.px(round(x - 4), row + 3, WOOD_D)
-    c.rect(38, 24, 56, 27, SNOW); c.rect(40, 23, 54, 23, SNOW_D)
+    c.rect(36, 24, 54, 27, SNOW); c.rect(38, 23, 52, 23, SNOW_D)
     c.lit_rect(8, 38, 34, 57, WOOD, mode='cyl')                                    # пень
     for x in range(9, 34, 3):
         c.line(x, 41, x, 56, WOOD_D)
@@ -432,9 +432,12 @@ def woodcutter():
                 d = ((x - 21) / rx) ** 2 + ((y - 38) / ry) ** 2
                 if 0.55 < d <= 1:
                     c.px(x, y, col)
-    c.line(21, 36, 12, 8, WOOD_D, 3); c.line(21, 36, 12, 8, WOOD, 1)               # топор
-    c.rect(4, 4, 18, 8, METAL); c.rect(4, 4, 18, 5, METAL_L); c.rect(3, 6, 6, 12, METAL_L)
-    c.rect(4, 9, 18, 9, METAL_D); c.px(3, 12, (255, 255, 255, 255))
+    c.line(18, 33, 9, 6, WOOD_D, 3); c.line(18, 33, 9, 6, WOOD, 2); c.line(18, 33, 9, 6, WOOD_L, 1)   # топор: ручка
+    c.rect(7, 4, 11, 6, WOOD_D); c.rect(7, 4, 10, 5, WOOD)                                       # навершие ручки
+    for y, x0, x1 in ((30, 19, 22), (31, 18, 25), (32, 17, 27), (33, 17, 28), (34, 18, 28), (35, 20, 27), (36, 22, 26)):
+        for x in range(x0, x1 + 1):                                                              # голова: обух слева, лезвие справа
+            c.px(x, y, METAL_L if (y == 30 or x >= 27) else METAL_D if x <= x0 + 1 else METAL)
+    c.line(24, 37, 29, 37, EARTH_D); c.px(29, 36, WOOD_L); c.px(30, 37, WOOD_L)                  # лезвие вошло в дерево
     c.outline()
     r = random.Random(7)
     for _ in range(14):                                                            # щепки
