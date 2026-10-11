@@ -65,6 +65,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .goals li.done { color: var(--good); text-decoration: line-through; text-decoration-color: #7ddc9c66; }
 .goals li.next { color: #fff; font-weight: 600; }
 .goals li small { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+#techs { display: grid; gap: 6px; }
+.tech { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #201a2e; border: 1px solid #546; border-radius: 8px; color: #dcf; text-align: left; font-size: 13px; min-height: 44px; }
+.tech small { color: #ba9; font-size: 12px; }
+.tech.done { border-color: var(--accent-line); color: var(--good); }
+.tech.no { opacity: .55; }
 #sel { line-height: 1.4; }
 #sel .cost { margin-top: 4px; font-weight: 600; }
 #sel .cost.no { color: var(--bad); }

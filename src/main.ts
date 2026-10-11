@@ -1,9 +1,10 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, initialState, isFree, isGameOver, step, tempAt } from './core/sim';
+import { alive, build, canAfford, initialState, isFree, isGameOver, research, step, tempAt } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 import { ERAS } from './data/eras';
+import { TECHS } from './data/techs';
 import { goalProgress } from './core/goals';
 import { costText, missingText, RateTracker, rateText, type ResKey } from './ui/format';
 import './ui/style.css';
@@ -38,6 +39,8 @@ root.innerHTML = `
   </div>
   <aside id="side">
     <div id="goals"></div>
+    <h3>${RU.techs} · 📖 <span id="kn"></span></h3>
+    <div id="techs"></div>
     <h3>${RU.selected}</h3>
     <div id="sel"></div>
     <h3>${RU.legendTitle}</h3>
@@ -51,7 +54,7 @@ root.innerHTML = `
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
 const resEl = $('res'), needsEl = $('needs'), dayEl = $('day'), speedEl = $('speed');
 const stage = $('stage'), view = $('view'), alertEl = $('alert'), bannerEl = $('banner');
-const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel');
+const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs');
 const tip = $('tip'), bar = $('bar'), intro = $('intro');
 
 // ——— Панели ———
@@ -101,6 +104,29 @@ function select(kind: BuildingKind) {
 }
 
 let barSig = '';
+let techSig = '';
+
+function renderTechs() {
+  $('kn').textContent = String(state.res.knowledge | 0);
+  const sig = `${state.techs.join()}|${state.era}|${TECHS.map((t) => (state.res.knowledge >= t.cost ? 1 : 0)).join('')}`;
+  if (sig === techSig) return;
+  techSig = sig;
+  techsEl.innerHTML = '';
+  for (const t of TECHS.filter((x) => x.era <= state.era)) {
+    const b = document.createElement('button');
+    const done = state.techs.includes(t.id);
+    const locked = !done && (state.res.knowledge < t.cost || !!t.requires?.some((r) => !state.techs.includes(r)));
+    b.className = `tech${done ? ' done' : locked ? ' no' : ''}`;
+    const need = t.requires?.filter((r) => !state.techs.includes(r)).map((r) => TECHS.find((x) => x.id === r)?.name).join(', ');
+    b.innerHTML = `<span>${done ? '✓ ' : ''}${t.name}</span><small>${done ? RU.learned : `${t.cost} знаний`}${need ? ` · нужно: ${need}` : ''}</small><small>${t.desc}</small>`;
+    b.onclick = () => {
+      const n = research(state, t.id);
+      if (n) { state = n; draw(); } else showFlash(RU.cantResearch);
+    };
+    techsEl.append(b);
+  }
+}
+
 function renderPanels() {
   const r = state.res;
   const living = alive(state);
@@ -150,6 +176,8 @@ function renderPanels() {
   alertEl.hidden = !text;
   alertEl.textContent = text;
   alertEl.classList.toggle('bad', over || !!flash);
+
+  renderTechs();
 
   const sig = KINDS.map((k) => (canAfford(state.res, k) ? 1 : 0)).join('') + (state.res.wood | 0) + (state.res.stone | 0);
   if (sig !== barSig) { barSig = sig; renderBar(); }
@@ -277,6 +305,7 @@ function tick() {
 function restart() {
   state = initialState();
   lastEra = 0;
+  techSig = '';
   rates.reset();
   schedule();
   draw();
