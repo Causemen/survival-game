@@ -30,13 +30,16 @@ function pick(tiles: Texture[] | undefined, x: number, y: number): Texture | und
   return tiles[0];
 }
 
-/** Спрайт, вписанный в рамку size×size с низом по точке (cx, bottom): так здания «стоят» на клетке. */
+/**
+ * Спрайт, вписанный в рамку size×size с низом по точке (cx, bottom): так здания «стоят» на клетке.
+ * Пиксель-арт (маленькие картинки без сглаживания) масштабируем только в целое число раз, чтобы пиксели были ровными.
+ */
 function place(tex: Texture, cx: number, bottom: number, size: number): Sprite {
   const s = new Sprite(tex);
-  const k = size / Math.max(tex.width, tex.height);
-  s.scale.set(k);
+  const fit = size / Math.max(tex.width, tex.height);
+  s.scale.set(tex.source.scaleMode === 'nearest' ? Math.max(1, Math.floor(fit)) : fit);
   s.anchor.set(0.5, 1);
-  s.position.set(cx, bottom);
+  s.position.set(Math.round(cx), Math.round(bottom));
   return s;
 }
 
