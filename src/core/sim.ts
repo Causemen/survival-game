@@ -1,4 +1,5 @@
 import { BUILDINGS, HUT_CAPACITY, PRODUCTION } from '../data/buildings';
+import { eraDone } from './goals';
 import type { BuildingKind, Resources, Settler, State } from './types';
 
 export const AMBIENT = -20;
@@ -26,6 +27,7 @@ export function initialState(): State {
     tick: 0, w, h, reactor, buildings: [], settlers,
     res: { wood: 60, stone: 20, food: 60, water: 60, knowledge: 0 },
     nextId: 100,
+    era: 0,
   };
 }
 
@@ -114,5 +116,10 @@ export function step(s: State): State {
     return { ...p, x, y, warmth, hunger, thirst, health, alive: health > 0 };
   });
 
-  return { ...s, tick: s.tick + 1, res, settlers };
+  const next: State = { ...s, tick: s.tick + 1, res, settlers };
+  // Эпоха пройдена: награда — реактор усиливается (больше радиус тепла) и приходят знания.
+  if (eraDone(next)) {
+    return { ...next, era: next.era + 1, reactor: { ...next.reactor, level: next.reactor.level + 1 }, res: { ...res, knowledge: res.knowledge + 20 } };
+  }
+  return next;
 }

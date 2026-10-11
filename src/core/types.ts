@@ -46,4 +46,5 @@ export interface State {
   settlers: Settler[];
   res: Resources;
   nextId: number;
+  era: number;
 }
