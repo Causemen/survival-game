@@ -55,3 +55,20 @@ describe('симуляция', () => {
     expect(s.settlers.filter((p) => p.alive).length).toBe(8);
   });
 });
+
+import { goalProgress } from './goals';
+
+describe('цели и эпохи', () => {
+  it('цели считают построенное', () => {
+    const s = build(initialState(), 'gatherer', 1, 1)!;
+    expect(goalProgress(s).find((g) => g.label.includes('Собирателя'))!.done).toBe(true);
+  });
+  it('прохождение эпохи усиливает реактор и открывает следующую', () => {
+    let s = initialState();
+    s = { ...s, res: { ...s.res, wood: 500, stone: 100, food: 500, water: 500 } };
+    for (const [k, x, y] of [['gatherer', 11, 7], ['purifier', 13, 7], ['woodcutter', 11, 9], ['hut', 13, 9], ['hut', 12, 10]] as const) s = build(s, k, x, y)!;
+    s = run(s, 80);
+    expect(s.era).toBe(1);
+    expect(s.reactor.level).toBe(2);
+  });
+});

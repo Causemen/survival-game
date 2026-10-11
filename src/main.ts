@@ -1,14 +1,19 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, initialState, isGameOver, step, tempAt } from './core/sim';
+import { alive, build, canAfford, initialState, isGameOver, step, tempAt } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
+import { ERAS } from './data/eras';
+import { goalProgress } from './core/goals';
 
 const TICK_MS = 500;
 
 let state: State = initialState();
 let speed = 1;
-let selected: BuildingKind = 'hut';
+let selected: BuildingKind = 'gatherer';
+let lastEra = 0;
+let banner = '';
+let barSig = '';
 
 const root = document.getElementById('app')!;
 root.innerHTML = `
@@ -19,6 +24,15 @@ root.innerHTML = `
   #bar button{min-height:44px;min-width:44px;padding:6px 10px;border:1px solid #345;background:#1a2635;color:#cfe;border-radius:6px;font-size:14px}
   #bar button.on{background:#2d6a4f;border-color:#6c9}
   #msg{padding:4px 8px;min-height:20px;color:#fb7;font-size:13px}
+  #goals{padding:6px 8px;background:#101a14;font-size:13px}
+  #goals .era{display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:4px}
+  #goals .era b{color:#8d8}
+  #goals .era span.cur{color:#fff;font-weight:600}
+  #goals ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:2px 12px}
+  #goals li.done{color:#6c9}
+  #bar button.no{opacity:.5}
+  #bar button small{display:block;font-size:12px;color:#fc8}
+  #bar button.on small{color:#fff}
   #info{padding:4px 8px;font-size:13px;color:#9ab}
   #needs{display:flex;flex-wrap:wrap;gap:4px 14px;padding:4px 8px;font-size:13px;background:#0e141c}
   .bar{display:inline-block;width:60px;height:8px;background:#233;border-radius:4px;vertical-align:middle;margin-left:4px}
@@ -31,11 +45,12 @@ root.innerHTML = `
   #intro button{min-height:44px;width:100%;font-size:16px;background:#2d6a4f;color:#fff;border:0;border-radius:6px}
   #view{touch-action:none}#view canvas{display:block}
 </style>
-<div id="hud"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
+<div id="hud"></div><div id="goals"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
 const hud = root.querySelector<HTMLElement>('#hud')!;
 const bar = root.querySelector<HTMLElement>('#bar')!;
 const msg = root.querySelector<HTMLElement>('#msg')!;
 const view = root.querySelector<HTMLElement>('#view')!;
+const goalsEl = root.querySelector<HTMLElement>('#goals')!;
 const needs = root.querySelector<HTMLElement>('#needs')!;
 const info = root.querySelector<HTMLElement>('#info')!;
 const intro = root.querySelector<HTMLElement>('#intro')!;
@@ -53,12 +68,14 @@ function buildBar() {
   for (const kind of Object.keys(BUILDINGS) as BuildingKind[]) {
     const c = BUILDINGS[kind].cost;
     const b = document.createElement('button');
-    b.textContent = `${RU.icons[kind]} ${RU.buildings[kind]} · ${c.wood ?? 0}🪵${c.stone ? ` ${c.stone}🪨` : ''}`;
-    b.className = kind === selected ? 'on' : '';
+    const price = [c.wood ? `${c.wood} дерева` : '', c.stone ? `${c.stone} камня` : ''].filter(Boolean).join(' + ');
+    b.innerHTML = `${RU.icons[kind]} ${RU.buildings[kind]}<small>${price}</small>`;
+    b.className = `${kind === selected ? 'on' : ''} ${canAfford(state.res, kind) ? '' : 'no'}`.trim();
     b.onclick = () => { selected = kind; buildBar(); };
     bar.append(b);
   }
-  info.textContent = `${RU.icons[selected]} ${RU.buildings[selected]}: ${RU.desc[selected]}`;
+  const sc = BUILDINGS[selected].cost;
+  info.textContent = `${RU.icons[selected]} ${RU.buildings[selected]}: ${RU.desc[selected]} ${RU.costWord}: ${[sc.wood ? `${sc.wood} дерева` : '', sc.stone ? `${sc.stone} камня` : ''].filter(Boolean).join(' + ')}.`;
   const help = document.createElement('button');
   help.textContent = RU.help;
   help.onclick = showIntro;
@@ -99,6 +116,17 @@ function draw() {
   }
   const r = state.res;
   const living = alive(state);
+  if (state.era > lastEra) { lastEra = state.era; banner = RU.eraDone; }
+  const eraDef = ERAS[Math.min(state.era, ERAS.length - 1)]!;
+  const gp = goalProgress(state);
+  const doneN = gp.filter((g) => g.done).length;
+  goalsEl.innerHTML = `<div class="era">` + ERAS.map((e, i) => `<span class="${i === state.era ? 'cur' : ''}">${i < state.era ? '✓' : i === state.era ? '▶' : '🔒'} ${e.name}</span>`).join('') + `</div>`
+    + (banner ? `<div style="color:#fd6;margin-bottom:4px">${banner}</div>` : '')
+    + (eraDef.playable && gp.length
+      ? `<div><b>${RU.goals} «${eraDef.name}» ${doneN}/${gp.length}</b></div><ul>` + gp.map((g) => `<li class="${g.done ? 'done' : ''}">${g.done ? '✓' : '○'} ${g.label}${g.target > 1 ? ` (${Math.floor(g.cur)}/${g.target})` : ''}</li>`).join('') + '</ul>'
+      : `<div>${RU.eraSoon}</div>`);
+  const sig = (Object.keys(BUILDINGS) as BuildingKind[]).map((k) => (canAfford(state.res, k) ? 1 : 0)).join('');
+  if (sig !== barSig) { barSig = sig; buildBar(); }
   hud.textContent = `${RU.day} ${(state.tick / 24) | 0} · 👥 ${living.length} · 🍎 ${r.food | 0} · 💧 ${r.water | 0} · 🪵 ${r.wood | 0} · 🪨 ${r.stone | 0} · 📖 ${r.knowledge | 0}`;
   const avg = (k: 'warmth' | 'hunger' | 'thirst' | 'health') => living.length ? living.reduce((a, p) => a + p[k], 0) / living.length : 0;
   needs.innerHTML = (['warmth', 'hunger', 'thirst', 'health'] as const).map((k) => {
@@ -138,7 +166,7 @@ await app.init({ background: '#0b0f14', antialias: true, width: 10, height: 10 }
 view.append(app.canvas);
 app.stage.addChild(layer);
 app.canvas.addEventListener('pointerdown', (e) => {
-  if (isGameOver(state)) { state = initialState(); msg.textContent = ''; schedule(); draw(); return; }
+  if (isGameOver(state)) { state = initialState(); lastEra = 0; banner = ''; msg.textContent = ''; schedule(); draw(); return; }
   const rect = app.canvas.getBoundingClientRect();
   const x = Math.floor((e.clientX - rect.left) / cell), y = Math.floor((e.clientY - rect.top) / cell);
   const next = build(state, selected, x, y);
