@@ -10,7 +10,7 @@ import { goalProgress } from './core/goals';
 import { costText, missingText, RateTracker, rateText, type ResKey } from './ui/format';
 import './ui/style.css';
 
-const TICK_MS = 500;
+const TICK_MS = 2000; // 1 игровой час; игровой день = 48 с на 1x
 const KINDS = Object.keys(BUILDINGS) as BuildingKind[];
 const RES_ICONS: Record<ResKey, string> = { food: '🍎', water: '💧', wood: '🪵', stone: '🪨', knowledge: '📖' };
 
