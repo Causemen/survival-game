@@ -301,6 +301,84 @@ def reactor():
     c.save('buildings/reactor.png')
 
 
+# ---------- кадры анимации поселенцев ----------
+
+def fit(rows):
+    """Для декора: подгоняет карту под 14x14 (дополняет точками справа и снизу)."""
+    rows = [r.ljust(14, '.')[:14] for r in rows]
+    return (rows + ['.' * 14] * 14)[:14]
+
+
+def hands(rows, coat, mode):
+    g = [list(r) for r in rows]
+    if mode == 'down':
+        return rows
+    for r, c in ((8, 1), (8, 2), (8, 11), (8, 12), (9, 2), (9, 11)):  # убираем варежки с боков
+        if g[r][c] == 'b':
+            g[r][c] = coat if c in (2, 11) else '.'
+    if mode == 'up':          # руки подняты (стучит, рубит)
+        for c in (1, 12):
+            g[8][c] = coat
+            g[7][c] = 'b'
+    elif mode == 'fwd':       # руки опущены вперёд
+        g[10][5] = g[10][8] = 'b'
+    elif mode == 'hug':       # обнимает себя от холода
+        g[9][5] = g[9][8] = 'b'
+        g[10][6] = g[10][7] = 'b'
+    return [''.join(r) for r in g]
+
+
+def legs(rows, mode):
+    g = list(rows)
+    if mode == 'step1':
+        g[12], g[13] = "....kk..kk....", "....kk........"
+    elif mode == 'step2':
+        g[12], g[13] = "....kk..kk....", "........kk...."
+    return g
+
+
+def blink(rows):
+    g = list(rows)
+    g[5] = g[5].replace('O', 'q')
+    return g
+
+
+def person_frames(name, base, coat):
+    frames = {
+        'idle': [base, blink(base)],
+        'walk': [legs(base, 'step1'), legs(base, 'step2')],
+        'work': [hands(base, coat, 'up'), hands(base, coat, 'fwd')],
+        'cold': [hands(base, coat, 'hug'), blink(hands(base, coat, 'hug'))],
+    }
+    for anim, rows in frames.items():
+        for i, r in enumerate(rows):
+            sprite('units/settler_%s_%s_%d.png' % (name, anim, i), r)
+
+
+# ---------- второй кадр костра и декор карты ----------
+
+CAMPFIRE_2 = CAMPFIRE[:]
+CAMPFIRE_2[:7] = ["......r.......", ".....rr.......", ".....rYr......", "....rrYYr.....", "....rYYYYr....", "....rYyyYr....", ".....ryyrr...."]
+
+TREE_A = fit([".......W......", "......WWw.....", "......tTTt....", ".....WWTTTw...", ".....tTTTTt...", "....WWTTTTTw..",
+              "....tTTTTTTt..", "...WWTTTTTTTw.", "...tTTTTTTTTt.", "..tTTTTTTTTTt.", ".......kk.....", ".......kk.....", "......wwww...."])
+TREE_B = fit(["......WW......", ".....WWWw.....", ".....tTTt.....", "....WWTTTw....", "....tTTTTt....", "...WWTTTTTw...",
+              "...tTTTTTTt...", "..WWTTTTTTTw..", "..tTTTTTTTTt..", ".tTTTTTTTTTTt.", ".......kk.....", ".......kk.....", "......wwww...."])
+BUSH = fit([".", ".", ".", ".", ".", ".", "....wwWWw.....", "..wWTTTTTWw...", ".wTTrTTTTrTWw.", ".tTTTTrTTTTTt.",
+            ".ttTTTTTTTTtt.", "..tttttttttt..", "..wwwwwwwwww.."])
+ROCKS = fit([".", ".", ".", ".", ".", ".", ".", ".....wwww.....", "....gGGGGg....", "...gGGGSSSg.gg",
+             "..gGGGGSSSSgGSg", "..SSSSSDDDSSSSS", "...wwwwwwwwww.."])
+TUFT = fit([".", ".", ".", ".", ".", ".", ".", ".", "......L.......", "....L.T..L....", "....TtTtTT....",
+            "...ttTTtTTtt..", "..wwwwwwwwww.."])
+STUMP = fit([".", ".", ".", ".", ".", ".", ".", ".", "....NyyyyN....", "....nNNNNn....", "....nknnkn....",
+             "....kkkkkk....", "...wwwwwwww..."])
+
+
+def decor():
+    for name, rows in (('tree_a', TREE_A), ('tree_b', TREE_B), ('bush', BUSH), ('rocks', ROCKS), ('tuft', TUFT), ('stump', STUMP)):
+        sprite('decor/%s.png' % name, rows)
+
+
 if __name__ == '__main__':
     for i in range(TILE_VARIANTS):
         tile_cold(i)
@@ -314,4 +392,8 @@ if __name__ == '__main__':
     sprite('units/settler_female.png', SETTLER_F)
     sprite('units/settler_male.png', SETTLER_M)
     reactor()
+    person_frames('female', SETTLER_F, 'r')
+    person_frames('male', SETTLER_M, 'T')
+    sprite('buildings/campfire_1.png', CAMPFIRE_2)
+    decor()
     print('ok')

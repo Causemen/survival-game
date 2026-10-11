@@ -1,4 +1,4 @@
-import { Application, Container } from 'pixi.js';
+import { Application } from 'pixi.js';
 import { alive, build, canAfford, research, initialState, isGameOver, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
@@ -8,7 +8,7 @@ import { TECHS } from './data/techs';
 import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
 import { loadArt } from './render/assets';
-import { drawWorld } from './render/world';
+import { Scene } from './render/scene';
 
 const TICK_MS = 2000; // 1 игровой час; игровой день = 48 с на 1x, вся игра около часа
 
@@ -134,12 +134,10 @@ function buildBar() {
 }
 
 const app = new Application();
-const layer = new Container();
 let cell = 32;
 
 function draw() {
-  layer.removeChildren().forEach((c) => c.destroy());
-  drawWorld(layer, state, cell, art);
+  scene.setState(state, cell);
   const r = state.res;
   const living = alive(state);
   if (state.era > lastEra) { lastEra = state.era; banner = RU.eraDone; }
@@ -181,6 +179,7 @@ function resize() {
 
 let timer: number | undefined;
 function schedule() {
+  scene.setSpeed(speed);
   clearInterval(timer);
   if (speed > 0) timer = window.setInterval(tick, TICK_MS / speed);
 }
@@ -191,9 +190,11 @@ function tick() {
 }
 
 const art = await loadArt();
+const scene = new Scene(art);
 await app.init({ background: '#0b0f14', antialias: true, width: 10, height: 10 });
 view.append(app.canvas);
-app.stage.addChild(layer);
+app.stage.addChild(scene.root);
+app.ticker.add((t) => scene.update(t.deltaMS));
 app.canvas.addEventListener('pointerdown', (e) => {
   if (isGameOver(state)) { state = initialState(); lastEra = 0; banner = ''; techSig = ''; msg.textContent = ''; schedule(); draw(); return; }
   const rect = app.canvas.getBoundingClientRect();

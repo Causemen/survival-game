@@ -18,12 +18,26 @@ export const ART_FILES = {
   settler: 'units/settler.png',
   settlerMale: 'units/settler_male.png',
   settlerFemale: 'units/settler_female.png',
+  campfire2: 'buildings/campfire_1.png',
 } satisfies Record<string, string>;
 
 export type ArtKey = keyof typeof ART_FILES;
+
+/** Кадры анимации человека: units/settler_<male|female>_<действие>_<номер>.png */
+export const ANIMS = { idle: 2, walk: 2, work: 2, cold: 2 } as const;
+export type Anim = keyof typeof ANIMS;
+export type Gender = 'male' | 'female';
+export type PersonFrames = Record<Anim, Texture[]>;
+
+/** Декор карты: decor/<имя>.png */
+export const DECOR = ['tree_a', 'tree_b', 'bush', 'rocks', 'tuft', 'stump'] as const;
+export type DecorKey = (typeof DECOR)[number];
+
 export interface Art extends Partial<Record<ArtKey, Texture>> {
   /** Все найденные варианты плиток земли (ground_cold.png, ground_cold_1.png, …). */
   variants: Record<TileKey, Texture[]>;
+  people: Partial<Record<Gender, Partial<PersonFrames>>>;
+  decor: Partial<Record<DecorKey, Texture>>;
 }
 
 /** Тайлы земли заполняют клетку целиком, остальное — спрайты на фоне, который нужно вырезать. */
@@ -35,19 +49,19 @@ const PIXEL_ART_MAX = 64;
 
 const variantFile = (file: string, i: number) => (i === 0 ? file : file.replace('.png', `_${i}.png`));
 
-async function loadTexture(file: string, sprite: boolean): Promise<Texture | undefined> {
+async function loadTexture(file: string, sprite: boolean, trimmed = true): Promise<Texture | undefined> {
   const img = await loadImage(`${import.meta.env.BASE_URL}assets/${file}`);
   if (!img) return undefined;
-  const tex = Texture.from(prepare(img, sprite));
+  const tex = Texture.from(prepare(img, sprite, trimmed));
   // Маленькие картинки — пиксель-арт: увеличиваем без размытия.
   if (Math.max(img.width, img.height) <= PIXEL_ART_MAX) tex.source.scaleMode = 'nearest';
   return tex;
 }
 
 export async function loadArt(): Promise<Art> {
-  const art: Art = { variants: { groundCold: [], groundWarm: [] } };
-  await Promise.all(
-    (Object.keys(ART_FILES) as ArtKey[]).map(async (key) => {
+  const art: Art = { variants: { groundCold: [], groundWarm: [] }, people: {}, decor: {} };
+  await Promise.all([
+    ...(Object.keys(ART_FILES) as ArtKey[]).map(async (key) => {
       if ((TILES as readonly ArtKey[]).includes(key)) {
         const tile = key as TileKey;
         const found = await Promise.all(
@@ -60,7 +74,20 @@ export async function loadArt(): Promise<Art> {
       const tex = await loadTexture(ART_FILES[key], true);
       if (tex) art[key] = tex;
     }),
-  );
+    ...(['male', 'female'] as const).flatMap((g) =>
+      (Object.keys(ANIMS) as Anim[]).map(async (anim) => {
+        // Кадры не обрезаем: у всех одинаковый холст, чтобы ноги не «прыгали» между кадрами.
+        const found = await Promise.all(
+          Array.from({ length: ANIMS[anim] }, (_, i) => loadTexture(`units/settler_${g}_${anim}_${i}.png`, true, false)),
+        );
+        if (found.every((t): t is Texture => !!t)) (art.people[g] ??= {})[anim] = found;
+      }),
+    ),
+    ...DECOR.map(async (name) => {
+      const tex = await loadTexture(`decor/${name}.png`, true);
+      if (tex) art.decor[name] = tex;
+    }),
+  ]);
   return art;
 }
 
@@ -77,11 +104,11 @@ function loadImage(src: string): Promise<HTMLImageElement | undefined> {
  * Уменьшает картинку до MAX_SIDE. Для спрайтов ещё и убирает однотонный фон
  * (Gemini не умеет прозрачность — просим ярко-пурпурный фон) и обрезает пустые поля.
  */
-function prepare(img: HTMLImageElement, sprite: boolean): HTMLCanvasElement {
+function prepare(img: HTMLImageElement, sprite: boolean, trimmed = true): HTMLCanvasElement {
   const k = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
   let c = canvasOf(Math.round(img.width * k), Math.round(img.height * k));
   c.getContext('2d', { willReadFrequently: true })!.drawImage(img, 0, 0, c.width, c.height);
-  if (sprite) c = trim(removeBackground(c));
+  if (sprite) c = trimmed ? trim(removeBackground(c)) : removeBackground(c);
   return c;
 }
 
