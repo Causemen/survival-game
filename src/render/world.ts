@@ -13,6 +13,23 @@ function tempColor(t: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+/**
+ * Вариант плитки для клетки: одинаковый между перерисовками. Первые два варианта обычные и частые,
+ * остальные (следы, лёд, лужа) редкие, чтобы не получался узор из одинаковых пятен.
+ */
+function pick(tiles: Texture[] | undefined, x: number, y: number): Texture | undefined {
+  if (!tiles?.length) return undefined;
+  const h = (Math.imul(x + 1, 73856093) ^ Math.imul(y + 1, 19349663)) >>> 0;
+  if (tiles.length < 3) return tiles[h % tiles.length];
+  const weights = tiles.map((_, i) => (i < 2 ? 5 : 1));
+  let r = h % weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]!;
+    if (r < 0) return tiles[i];
+  }
+  return tiles[0];
+}
+
 /** Спрайт, вписанный в рамку size×size с низом по точке (cx, bottom): так здания «стоят» на клетке. */
 function place(tex: Texture, cx: number, bottom: number, size: number): Sprite {
   const s = new Sprite(tex);
@@ -35,7 +52,7 @@ export function drawWorld(layer: Container, state: State, cell: number, art: Art
         g.rect(x * cell, y * cell, cell - 1, cell - 1).fill(tempColor(t));
         continue;
       }
-      for (const [tex, alpha] of [[art.groundCold!, 1], [art.groundWarm, warmthOf(t)]] as const) {
+      for (const [tex, alpha] of [[pick(art.variants.groundCold, x, y), 1], [pick(art.variants.groundWarm, x, y), warmthOf(t)]] as const) {
         if (!tex || alpha <= 0) continue;
         const s = new Sprite(tex);
         s.position.set(x * cell, y * cell);

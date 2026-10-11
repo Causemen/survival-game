@@ -19,24 +19,44 @@ export const ART_FILES = {
 } satisfies Record<string, string>;
 
 export type ArtKey = keyof typeof ART_FILES;
-export type Art = Partial<Record<ArtKey, Texture>>;
+export interface Art extends Partial<Record<ArtKey, Texture>> {
+  /** Все найденные варианты плиток земли (ground_cold.png, ground_cold_1.png, …). */
+  variants: Record<TileKey, Texture[]>;
+}
 
 /** Тайлы земли заполняют клетку целиком, остальное — спрайты на фоне, который нужно вырезать. */
-const TILES: ArtKey[] = ['groundCold', 'groundWarm'];
+const TILES = ['groundCold', 'groundWarm'] as const satisfies readonly ArtKey[];
+type TileKey = (typeof TILES)[number];
+const TILE_VARIANTS = 4;
 const MAX_SIDE = 256;
 const PIXEL_ART_MAX = 64;
 
+const variantFile = (file: string, i: number) => (i === 0 ? file : file.replace('.png', `_${i}.png`));
+
+async function loadTexture(file: string, sprite: boolean): Promise<Texture | undefined> {
+  const img = await loadImage(`${import.meta.env.BASE_URL}assets/${file}`);
+  if (!img) return undefined;
+  const tex = Texture.from(prepare(img, sprite));
+  // Маленькие картинки — пиксель-арт: увеличиваем без размытия.
+  if (Math.max(img.width, img.height) <= PIXEL_ART_MAX) tex.source.scaleMode = 'nearest';
+  return tex;
+}
 
 export async function loadArt(): Promise<Art> {
-  const art: Art = {};
+  const art: Art = { variants: { groundCold: [], groundWarm: [] } };
   await Promise.all(
     (Object.keys(ART_FILES) as ArtKey[]).map(async (key) => {
-      const img = await loadImage(`${import.meta.env.BASE_URL}assets/${ART_FILES[key]}`);
-      if (!img) return;
-      const tex = Texture.from(prepare(img, !TILES.includes(key)));
-      // Маленькие картинки — пиксель-арт: увеличиваем без размытия.
-      if (Math.max(img.width, img.height) <= PIXEL_ART_MAX) tex.source.scaleMode = 'nearest';
-      art[key] = tex;
+      if ((TILES as readonly ArtKey[]).includes(key)) {
+        const tile = key as TileKey;
+        const found = await Promise.all(
+          Array.from({ length: TILE_VARIANTS }, (_, i) => loadTexture(variantFile(ART_FILES[tile], i), false)),
+        );
+        art.variants[tile] = found.filter((t): t is Texture => !!t);
+        art[tile] = art.variants[tile][0];
+        return;
+      }
+      const tex = await loadTexture(ART_FILES[key], true);
+      if (tex) art[key] = tex;
     }),
   );
   return art;

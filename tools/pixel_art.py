@@ -2,7 +2,7 @@
 """Рисует пиксель-арт для игры прямо в коде и кладёт PNG в public/assets/.
 
 Запуск: python3 tools/pixel_art.py  (нужен Pillow). Палитра — из docs/ART.md.
-Спрайты зданий 64x64 на прозрачном фоне, поселенец 32x32, тайлы 32x32 (бесшовные).
+Спрайты зданий 64x64 на прозрачном фоне, поселенец 32x32, тайлы земли 32x32 (по 4 варианта).
 Свет всегда падает сверху слева: светлые грани слева сверху, тени справа снизу.
 """
 import math
@@ -142,13 +142,23 @@ class Canvas:
         self.im.save(path)
 
 
-# ---------- тайлы 32x32, бесшовные (всё рисуется по модулю размера) ----------
+# ---------- тайлы 32x32: по 4 варианта снега и земли ----------
+# Варианты 0 и 1 обычные и частые, 2 и 3 с особенностями (следы, лёд, лужа) и редкие, см. pick() в world.ts.
+# Все детали лежат целиком внутри плитки, поэтому соседние варианты стыкуются без швов.
 
-def tile_cold():
-    c, r = Canvas(32, 32, wrap=True), random.Random(11)
+TILE_VARIANTS = 4
+
+
+def spot(r, rx, ry):
+    return r.randint(rx + 1, 30 - rx), r.randint(ry + 1, 30 - ry)
+
+
+def tile_cold(idx):
+    c, r = Canvas(32, 32), random.Random(100 + idx)
     c.rect(0, 0, 31, 31, SNOW)
-    for _ in range(9):  # сугробы: тёмная тень снизу справа, светлый край сверху слева
-        cx, cy, rx, ry = r.randrange(32), r.randrange(32), r.randint(4, 8), r.randint(2, 4)
+    for _ in range((9, 6, 12, 7)[idx]):  # сугробы: тень снизу справа, светлый край сверху слева
+        rx, ry = r.randint(3, 7), r.randint(2, 3)
+        cx, cy = spot(r, rx + 1, ry + 1)
         for y in range(cy - ry - 1, cy + ry + 2):
             for x in range(cx - rx - 1, cx + rx + 2):
                 d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
@@ -156,43 +166,75 @@ def tile_cold():
                     c.px(x, y, SNOW_D if (y - cy) / ry > 0.15 or (x - cx) / rx > 0.55 else SNOW)
                 elif d <= 1.35 and (y - cy) / ry < -0.3 and (x - cx) / rx < 0.1:
                     c.px(x, y, (255, 255, 255, 255))
-    for _ in range(40):
+    for _ in range(30):
         c.px(r.randrange(32), r.randrange(32), SNOW_D if r.random() < .7 else SNOW_DD)
-    for _ in range(6):  # искорки
-        x, y = r.randrange(32), r.randrange(32)
+    if idx == 2:  # следы (редкий вариант)
+        x, y = 5, 8
+        for i in range(5):
+            for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+                c.px(x + dx, y + dy, SNOW_DD)
+            c.px(x, y + 1, SNOW_D)
+            x, y = x + 5, y + (3 if i % 2 == 0 else -3) + 1
+    elif idx == 3:  # ледяная корка (редкий вариант)
+        cx, cy = 16, 18
+        for y in range(10, 27):
+            for x in range(5, 28):
+                d = ((x - cx) / 11) ** 2 + ((y - cy) / 7) ** 2
+                if d <= 1:
+                    c.px(x, y, hx('#BFE0F0') if d > 0.25 else hx('#D6EEF8'))
+        for i in range(5):
+            c.px(11 + i, 15 - i // 3, (255, 255, 255, 255))
+        c.px(20, 21, hx('#8FC3DE')); c.px(21, 21, hx('#8FC3DE'))
+    for _ in range(5):  # искорки
+        x, y = r.randint(1, 30), r.randint(1, 30)
         c.px(x, y, (255, 255, 255, 255))
         if r.random() < .5:
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 c.px(x + dx, y + dy, SNOW_D)
-    c.save('tiles/ground_cold.png')
+    c.save('tiles/ground_cold%s.png' % ('' if idx == 0 else '_%d' % idx))
 
 
-def tile_warm():
-    c, r = Canvas(32, 32, wrap=True), random.Random(12)
+def tile_warm(idx):
+    c, r = Canvas(32, 32), random.Random(200 + idx)
     for y in range(32):
         for x in range(32):
             v = r.random()
             c.px(x, y, EARTH_D if v < 0.16 else EARTH_L if v < 0.3 else EARTH)
-    for _ in range(7):  # пятна мха
-        cx, cy, rx, ry = r.randrange(32), r.randrange(32), r.randint(2, 5), r.randint(2, 4)
+    for _ in range((7, 12, 3, 5)[idx]):  # пятна мха
+        rx, ry = r.randint(2, 5), r.randint(2, 4)
+        cx, cy = spot(r, rx, ry)
         for y in range(cy - ry, cy + ry + 1):
             for x in range(cx - rx, cx + rx + 1):
                 if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1 and r.random() < .85:
                     t = r.random()
                     c.px(x, y, MOSS_L if t < .2 else MOSS_D if t > .65 else MOSS)
-    for _ in range(10):  # пучки травы
-        x, y = r.randrange(32), r.randrange(32)
+    if idx == 3:  # лужа талой воды
+        cx, cy = 16, 17
+        for y in range(8, 27):
+            for x in range(5, 28):
+                d = ((x - cx) / 11) ** 2 + ((y - cy) / 8) ** 2
+                if d <= 1.25:
+                    c.px(x, y, EARTH_D)
+                if d <= 1:
+                    c.px(x, y, WATER_D if d > 0.55 else WATER)
+        for i in range(6):
+            c.px(11 + i, 14, WATER_L)
+        c.px(18, 19, WATER_L); c.px(19, 19, WATER_L); c.px(14, 21, WATER_L)
+    for _ in range((10, 14, 6, 8)[idx]):  # пучки травы
+        x, y = r.randint(2, 29), r.randint(3, 30)
+        if idx == 3 and 4 < x < 28 and 7 < y < 27:
+            continue
         for dy, col in ((0, MOSS_D), (-1, MOSS), (-2, MOSS_L)):
             c.px(x, y + dy, col)
         c.px(x - 1, y - 1, MOSS); c.px(x + 1, y - 2, MOSS_L)
-    for _ in range(4):  # камушки
-        x, y = r.randrange(32), r.randrange(32)
+    for _ in range((4, 2, 10, 3)[idx]):  # камушки
+        x, y = r.randint(1, 29), r.randint(1, 29)
         c.px(x, y, STONE_L); c.px(x + 1, y, STONE); c.px(x, y + 1, STONE); c.px(x + 1, y + 1, STONE_D)
     for _ in range(3):  # трещинки
-        x, y = r.randrange(32), r.randrange(32)
+        x, y = r.randint(1, 26), r.randint(1, 30)
         for i in range(4):
             c.px(x + i, y + (i % 2), EARTH_D)
-    c.save('tiles/ground_warm.png')
+    c.save('tiles/ground_warm%s.png' % ('' if idx == 0 else '_%d' % idx))
 
 
 # ---------- здания 64x64 ----------
@@ -496,6 +538,9 @@ def settler():
 
 
 if __name__ == '__main__':
-    for f in (tile_cold, tile_warm, reactor, hut, campfire, gatherer, woodcutter, quarry, purifier, settler):
+    for i in range(TILE_VARIANTS):
+        tile_cold(i)
+        tile_warm(i)
+    for f in (reactor, hut, campfire, gatherer, woodcutter, quarry, purifier, settler):
         f()
     print('ok')
