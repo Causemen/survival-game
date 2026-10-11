@@ -16,6 +16,8 @@ export const ART_FILES = {
   quarry: 'buildings/quarry.png',
   purifier: 'buildings/purifier.png',
   settler: 'units/settler.png',
+  settlerMale: 'units/settler_male.png',
+  settlerFemale: 'units/settler_female.png',
 } satisfies Record<string, string>;
 
 export type ArtKey = keyof typeof ART_FILES;

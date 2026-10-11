@@ -38,7 +38,7 @@
 | `buildings/woodcutter.png` | лесоруб | 1 клетка |
 | `buildings/quarry.png` | каменоломня | 1 клетка |
 | `buildings/purifier.png` | фильтр воды | 1 клетка |
-| `units/settler.png` | поселенец | ~0,45 клетки |
+| `units/settler_male.png`, `units/settler_female.png` | поселенцы: мужчина и женщина (по очереди; если нет, берётся `units/settler.png`) | ~0,5 клетки |
 
 ## 4. Промпты для Gemini
 Пишите промпт целиком: **общий стиль + описание объекта**. На английском Gemini держит стиль стабильнее. Если результат выбивается из серии, приложите к запросу уже удачную картинку и добавьте «match the style of the attached image».
@@ -63,7 +63,8 @@
 - `purifier.png`: *[стиль спрайтов]* + `A homemade water purifier: a metal barrel with a funnel, pipes and a charcoal filter, a bucket of clean blue water, a little steam.`
 
 ### Люди
-- `settler.png`: *[стиль спрайтов, но без «no people»]* + `A cute chibi survivor character standing, facing the viewer, wearing a warm patched winter coat, scarf and knitted hat, rosy cheeks, friendly look, full body.`
+- `settler_male.png`: *[стиль спрайтов, но без «no people»]* + `A cute chibi male survivor standing, facing the viewer, short brown hair with sideburns and light stubble, blue knitted hat, green padded winter jacket with a fur collar, brown trousers, mittens and boots, friendly look, full body.`
+- `settler_female.png`: *[стиль спрайтов, но без «no people»]* + `A cute chibi female survivor standing, facing the viewer, long auburn hair with bangs, cream knitted hat with a red pompom, red winter coat, yellow scarf, mittens and boots, rosy cheeks, friendly look, full body.`
 
 ## 5. Что понадобится дальше (по эпохам из PLAN.md)
 Генерировать по мере появления в игре, в той же серии:

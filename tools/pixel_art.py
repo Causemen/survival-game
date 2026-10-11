@@ -2,7 +2,7 @@
 """Рисует пиксель-арт для игры прямо в коде и кладёт PNG в public/assets/.
 
 Запуск: python3 tools/pixel_art.py  (нужен Pillow). Палитра — из docs/ART.md.
-Спрайты зданий 64x64 на прозрачном фоне, поселенец 32x32, тайлы земли 32x32 (по 4 варианта).
+Спрайты зданий 64x64 на прозрачном фоне, поселенцы (мужчина и женщина) 32x32, тайлы земли 32x32 (по 4 варианта).
 Свет всегда падает сверху слева: светлые грани слева сверху, тени справа снизу.
 """
 import math
@@ -505,42 +505,98 @@ def purifier():
     c.save('buildings/purifier.png')
 
 
-# ---------- поселенец 32x32 ----------
+# ---------- поселенцы 32x32: мужчина и женщина ----------
 
-def settler():
+BOOT, MITTEN = hx('#3F2E2A'), hx('#5C7BB5')
+
+
+def person(rel, hair, hat, coat, scarf, pants, female):
     c = Canvas(32, 32)
-    c.lit_rect(8, 18, 23, 27, COAT, mode='cyl')                                    # пальто
-    c.lit_rect(4, 19, 8, 26, shade(COAT, -0.2))
-    c.lit_rect(23, 19, 27, 26, shade(COAT, -0.35))
-    c.lit_ellipse(6, 27, 2.6, 2.6, hx('#5C7BB5')); c.lit_ellipse(25, 27, 2.6, 2.6, hx('#5C7BB5'))   # варежки
-    c.rect(8, 24, 23, 24, hx('#5E3A28'))                                           # ремень
-    c.rect(15, 24, 16, 24, GLOW)
-    for y in (20, 22):                                                             # пуговицы
-        c.px(15, y, SNOW_D); c.px(16, y, SNOW_D)
-    c.lit_rect(9, 28, 14, 30, hx('#3F2E2A'), mode='flat'); c.lit_rect(17, 28, 22, 30, hx('#3F2E2A'), mode='flat')
-    c.lit_ellipse(15.5, 11, 7.5, 6.5, SKIN)                                        # голова
-    c.rect(11, 11, 12, 12, OUTLINE); c.rect(19, 11, 20, 12, OUTLINE)               # глаза
+    hair_d = shade(hair, -0.35)
+    if female:  # длинные волосы сзади
+        c.lit_ellipse(15.5, 14, 9.5, 10, hair)
+        c.lit_rect(6, 12, 10, 25, hair); c.lit_rect(21, 12, 25, 25, shade(hair, -0.2))
+        c.px(8, 25, hair_d); c.px(23, 25, hair_d)
+    # ноги и обувь
+    if female:
+        c.lit_rect(11, 26, 13, 29, hx('#3A3A4A'), mode='flat'); c.lit_rect(18, 26, 20, 29, hx('#3A3A4A'), mode='flat')
+    else:
+        c.lit_rect(10, 24, 21, 29, pants, mode='cyl'); c.line(15, 26, 15, 29, shade(pants, -0.6))
+    c.lit_rect(9, 29, 14, 31, BOOT, mode='flat'); c.lit_rect(17, 29, 22, 31, BOOT, mode='flat')
+    c.rect(9, 29, 14, 29, shade(BOOT, 0.5)); c.rect(17, 29, 22, 29, shade(BOOT, 0.5))
+    # пальто: у женщины расходится книзу
+    for y in range(17, 28 if female else 26):
+        hw = 7.5 + ((y - 17) * 0.32 if female else 0)
+        for x in range(round(15.5 - hw), round(15.5 + hw) + 1):
+            l = -((x - 15.5) / hw) * 0.85 + 0.1 - (y - 17) * 0.02
+            c.px(x, y, shade(coat, quant(l, x, y)))
+    c.lit_rect(5, 18, 8, 25, shade(coat, -0.15)); c.lit_rect(23, 18, 26, 25, shade(coat, -0.35))   # рукава
+    c.lit_ellipse(6.5, 26, 2.4, 2.4, MITTEN); c.lit_ellipse(24.5, 26, 2.4, 2.4, shade(MITTEN, -0.2))
+    belt_y = 22 if female else 24
+    c.rect(8, belt_y, 23, belt_y, hx('#5E3A28')); c.rect(15, belt_y, 16, belt_y, GLOW)
+    for y in range(19, belt_y):
+        c.px(15, y, SNOW_D); c.px(16, y, SNOW_D)                                    # пуговицы
+    if not female:
+        c.rect(10, 20, 12, 21, shade(coat, -0.4)); c.rect(10, 20, 12, 20, shade(coat, 0.2))   # карман
+    if female:  # шарф с хвостом
+        c.lit_rect(8, 16, 23, 18, scarf, mode='cyl'); c.lit_rect(19, 18, 22, 24, shade(scarf, -0.2))
+        for x in range(8, 24, 3):
+            c.px(x, 17, shade(scarf, -0.4))
+    else:       # меховой воротник
+        c.lit_rect(7, 16, 24, 18, SNOW_D, mode='cyl')
+        for x in range(8, 24, 2):
+            c.px(x, 18, SNOW); c.px(x + 1, 19, SNOW_D)
+    # голова
+    for y in range(3, 19):                                                           # лицо: ровный цвет, тень только снизу справа
+        for x in range(7, 25):
+            nx, ny = (x - 15.5) / 7.2, (y - 11) / 6.5
+            if nx * nx + ny * ny <= 1:
+                c.px(x, y, shade(SKIN, -0.18) if 0.6 * nx + 0.8 * ny > 0.62 else SKIN)
+    c.rect(11, 11, 12, 12, OUTLINE); c.rect(19, 11, 20, 12, OUTLINE)
     c.px(11, 11, (255, 255, 255, 255)); c.px(19, 11, (255, 255, 255, 255))
-    c.rect(9, 14, 10, 14, hx('#E9998A')); c.rect(21, 14, 22, 14, hx('#E9998A'))   # румянец
-    c.rect(14, 15, 17, 15, hx('#B8604A'))
-    c.lit_rect(7, 16, 24, 18, SCARF, mode='cyl'); c.lit_rect(19, 18, 22, 24, shade(SCARF, -0.2))   # шарф
-    for x in range(8, 24, 3):
-        c.px(x, 17, shade(SCARF, -0.4))
-    for y in range(2, 8):                                                          # шапка
+    if female:
+        c.px(10, 10, OUTLINE); c.px(21, 10, OUTLINE)                                 # ресницы
+        c.rect(9, 13, 10, 14, hx('#EE8F86')); c.rect(21, 13, 22, 14, hx('#EE8F86'))
+        c.rect(15, 15, 16, 15, hx('#C8404A'))
+        c.rect(8, 7, 23, 9, hair)                                                    # чёлка
+        for x in range(9, 23, 2):
+            c.px(x, 9, hair_d)
+        c.px(15, 8, shade(hair, 0.4)); c.px(16, 8, shade(hair, 0.4))
+    else:
+        c.rect(9, 13, 10, 13, hx('#E9998A')); c.rect(21, 13, 22, 13, hx('#E9998A'))
+        c.rect(14, 15, 17, 15, hx('#B8604A'))
+        c.rect(8, 8, 9, 13, hair); c.rect(22, 8, 23, 13, hair_d)                     # бакенбарды
+        r = random.Random(4)
+        for x in range(10, 22):                                                      # щетина
+            for y in (14, 15, 16):
+                if c.get(x, y) in (SKIN, shade(SKIN, -0.18)) and r.random() < 0.35:
+                    c.px(x, y, shade(hair, -0.1))
+    # шапка
+    for y in range(2, 8):
         hw = 8 - (7 - y) // 3
         for x in range(round(15.5 - hw), round(15.5 + hw) + 1):
-            c.px(x, y, shade(RED, 0.4 - (x - (15.5 - hw)) / (2 * hw) * 0.9))
-    c.rect(7, 7, 24, 9, SNOW_D); c.rect(7, 7, 24, 7, SNOW)
-    c.lit_ellipse(15.5, 1.5, 2.4, 2.4, SNOW)
+            c.px(x, y, shade(hat, 0.4 - (x - (15.5 - hw)) / (2 * hw) * 0.9))
+    for x in range(7, 25):                                                           # отворот с вязкой
+        c.px(x, 7, SNOW if x % 2 else SNOW_D); c.px(x, 8, SNOW_D if x % 2 else SNOW)
+    if female:
+        c.lit_ellipse(15.5, 1.5, 2.6, 2.6, RED)
     c.outline()
     c.shadow(16, 31, 11, 1.5)
-    c.save('units/settler.png')
+    c.save(rel)
+
+
+def settler_female():
+    person('units/settler_female.png', hx('#A8532B'), hx('#F2E3C0'), COAT, SCARF, None, True)
+
+
+def settler_male():
+    person('units/settler_male.png', hx('#5A3A24'), hx('#3E5E8A'), hx('#4F7F6B'), None, hx('#6B5A48'), False)
 
 
 if __name__ == '__main__':
     for i in range(TILE_VARIANTS):
         tile_cold(i)
         tile_warm(i)
-    for f in (reactor, hut, campfire, gatherer, woodcutter, quarry, purifier, settler):
+    for f in (reactor, hut, campfire, gatherer, woodcutter, quarry, purifier, settler_male, settler_female):
         f()
     print('ok')

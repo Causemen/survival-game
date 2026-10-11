@@ -84,7 +84,8 @@ export function drawWorld(layer: Container, state: State, cell: number, art: Art
 
   for (const p of alive(state)) {
     const px = (p.x + 0.5) * cell + (p.id % 5) * 3 - 6, py = (p.y + 0.5) * cell + (p.id % 3) * 3 - 3;
-    if (art.settler) layer.addChild(place(art.settler, px, py + cell * 0.2, cell * 0.45));
+    const tex = (p.id % 2 ? art.settlerFemale : art.settlerMale) ?? art.settler;
+    if (tex) layer.addChild(place(tex, px, py + cell * 0.2, cell * 0.5));
     else g.circle(px, py, cell * 0.12).fill(0xffffff);
   }
 }
