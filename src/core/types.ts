@@ -47,4 +47,8 @@ export interface State {
   res: Resources;
   nextId: number;
   era: number;
+  techs: string[];
+  seed: number;
+  active: { id: string; until: number }[];
+  log: { tick: number; text: string }[];
 }
