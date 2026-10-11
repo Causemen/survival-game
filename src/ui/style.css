@@ -1,0 +1,136 @@
+:root {
+  --bg: #0b0f14;
+  --panel: #121a24;
+  --panel2: #0e141c;
+  --line: #2a3a4c;
+  --text: #d6e6f2;
+  --muted: #8ea3b5;
+  --accent: #2d6a4f;
+  --accent-line: #6c9;
+  --warn: #ffb86b;
+  --bad: #ff6b6b;
+  --good: #7ddc9c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+body { overflow: hidden; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+.game { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); height: 100vh; height: 100dvh; }
+.game > * { min-width: 0; }
+
+/* Верхняя панель: ресурсы, нужды, время */
+#top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+#res { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; }
+.chip { display: flex; align-items: baseline; gap: 4px; padding: 4px 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; font-size: 15px; white-space: nowrap; }
+.chip b { font-variant-numeric: tabular-nums; }
+.chip .name { color: var(--muted); font-size: 12px; }
+.chip .rate { font-size: 12px; font-variant-numeric: tabular-nums; }
+.chip .rate.up { color: var(--good); }
+.chip .rate.down { color: var(--bad); }
+.chip.low { border-color: var(--bad); }
+#needs { display: flex; gap: 10px; font-size: 13px; color: var(--muted); }
+#needs span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.meter { width: 46px; height: 7px; background: #233; border-radius: 4px; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 4px; transition: width .3s; }
+#time { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+#day { font-weight: 600; margin-right: 6px; white-space: nowrap; }
+.tbtn { min-width: 40px; min-height: 36px; padding: 4px 8px; background: #1a2635; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+.tbtn.on { background: var(--accent); border-color: var(--accent-line); color: #fff; }
+
+/* Середина: карта и боковая панель */
+#main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+#stage { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#view { position: absolute; inset: 0; touch-action: none; }
+#view canvas { display: block; }
+#alert { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 16px); padding: 6px 12px; background: #2a1a0ecc; border: 1px solid var(--warn); color: var(--warn); border-radius: 18px; font-size: 14px; text-align: center; pointer-events: none; }
+#alert[hidden] { display: none; }
+#alert.bad { background: #2a0e0ecc; border-color: var(--bad); color: #ffd0d0; }
+#banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100% - 24px); padding: 16px 20px; background: #10241acc; border: 2px solid var(--good); border-radius: 12px; font-size: 18px; text-align: center; pointer-events: none; }
+#banner[hidden] { display: none; }
+#goalsBtn { display: none; }
+
+#side { overflow: auto; background: var(--panel2); border-left: 1px solid var(--line); padding: 10px 12px; font-size: 14px; }
+#side h3 { margin: 12px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+#side h3:first-child { margin-top: 0; }
+#sideClose { display: none; }
+.eras { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.eras span { padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #1a2635; color: var(--muted); }
+.eras span.cur { background: var(--accent); color: #fff; }
+.eras span.done { color: var(--good); }
+.progress { height: 8px; background: #233; border-radius: 4px; overflow: hidden; margin: 4px 0 8px; }
+.progress i { display: block; height: 100%; background: var(--good); transition: width .3s; }
+.goals { list-style: none; margin: 0; padding: 0; }
+.goals li { display: flex; gap: 6px; padding: 3px 0; }
+.goals li.done { color: var(--good); text-decoration: line-through; text-decoration-color: #7ddc9c66; }
+.goals li.next { color: #fff; font-weight: 600; }
+.goals li small { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+#events .ev { padding: 6px 10px; margin-bottom: 4px; background: #2a1a1a; border: 1px solid #a55; border-radius: 8px; color: #fbb; }
+#events small { display: block; color: #a88; font-size: 12px; padding: 1px 0; }
+#techs { display: grid; gap: 6px; }
+.tech { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #201a2e; border: 1px solid #546; border-radius: 8px; color: #dcf; text-align: left; font-size: 13px; min-height: 44px; }
+.tech small { color: #ba9; font-size: 12px; }
+.tech.done { border-color: var(--accent-line); color: var(--good); }
+.tech.no { opacity: .55; }
+#sel { line-height: 1.4; }
+#sel .cost { margin-top: 4px; font-weight: 600; }
+#sel .cost.no { color: var(--bad); }
+.legend { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }
+
+/* Нижняя панель строительства */
+#build { background: var(--panel); border-top: 1px solid var(--line); }
+#tip { padding: 4px 10px 0; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bar { display: flex; gap: 6px; padding: 6px 10px 8px; overflow-x: auto; scrollbar-width: thin; }
+.bbtn { flex: 0 0 auto; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-height: 52px; padding: 6px 12px 6px 8px; background: #1a2635; border: 1px solid var(--line); border-radius: 8px; text-align: left; }
+.bbtn .ic { grid-row: span 2; font-size: 24px; }
+.bbtn .nm { font-size: 14px; }
+.bbtn .pr { font-size: 12px; color: #fc8; }
+.bbtn .key { display: none; }
+.bbtn.on { background: var(--accent); border-color: var(--accent-line); box-shadow: 0 0 0 2px #6c94; }
+.bbtn.on .pr { color: #fff; }
+.bbtn.no .ic, .bbtn.no .nm { opacity: .5; }
+.bbtn.no .pr { color: var(--bad); }
+
+/* Вступление */
+#intro { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center; padding: 12px; z-index: 10; }
+#intro[hidden] { display: none; }
+#intro > div { max-width: 520px; max-height: 100%; overflow: auto; background: #16202c; border: 1px solid #456; border-radius: 12px; padding: 18px; line-height: 1.45; font-size: 15px; }
+#intro p { margin: 0 0 10px; }
+#intro button { min-height: 48px; width: 100%; font-size: 17px; background: var(--accent); color: #fff; border: 0; border-radius: 8px; }
+
+@media (hover: hover) and (min-width: 761px) {
+  .bbtn .key { display: inline; color: var(--muted); font-size: 11px; margin-left: 4px; }
+}
+
+/* Телефон: карта на весь экран, цели — выдвижная панель */
+@media (max-width: 760px) {
+  #top { padding: 4px 6px; gap: 4px 8px; }
+  #res { gap: 4px; }
+  .chip { padding: 2px 5px; font-size: 13px; gap: 3px; }
+  .chip .rate { font-size: 11px; }
+  #time { margin-left: 0; width: 100%; }
+  #day { margin-right: auto; font-size: 14px; }
+  .chip .name { display: none; }
+  #needs { order: 3; width: 100%; justify-content: space-between; gap: 6px; font-size: 12px; }
+  .meter { width: 34px; }
+  #day { margin-right: 2px; }
+  .tbtn { min-width: 36px; min-height: 34px; padding: 2px 6px; }
+  #main { grid-template-columns: minmax(0, 1fr); }
+  #needs .lbl { display: none; }
+  .meter { flex: 1; }
+  #needs span { flex: 1; }
+  #side { position: absolute; left: 0; right: 0; bottom: 0; max-height: 75%; z-index: 5; border-left: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0; box-shadow: 0 -8px 24px #000a; transform: translateY(100%); transition: transform .2s; visibility: hidden; }
+  .game.sheet #side { transform: none; visibility: visible; }
+  #main { position: relative; }
+  #sideClose { display: block; width: 100%; min-height: 40px; margin-top: 10px; background: #1a2635; border: 1px solid var(--line); border-radius: 8px; }
+  #goalsBtn { display: block; position: absolute; left: 8px; bottom: 8px; z-index: 4; min-height: 40px; padding: 6px 12px; background: #10241ae6; border: 1px solid var(--good); border-radius: 20px; font-size: 14px; }
+  #alert { font-size: 13px; }
+}
+
+/* Низкий экран (телефон боком): экономим высоту */
+@media (max-height: 500px) {
+  #tip { display: none; }
+  #top { padding: 3px 8px; }
+  .bbtn { min-height: 44px; padding: 4px 10px 4px 6px; }
+}
