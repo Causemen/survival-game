@@ -19,11 +19,14 @@ const hash = (x: number, y: number) => (Math.imul(x + 1, 73856093) ^ Math.imul(y
  * Вариант плитки для клетки: одинаковый между перерисовками. Первые два варианта обычные и частые,
  * остальные (следы, лёд, лужа) редкие, чтобы не получался узор из одинаковых пятен.
  */
+/** Вес варианта плитки по номеру: две обычные чаще всего, следы реже, лужа льда совсем редко. */
+const TILE_WEIGHTS = [10, 10, 3, 1];
+
 function pick(tiles: Texture[] | undefined, x: number, y: number): Texture | undefined {
   if (!tiles?.length) return undefined;
   const h = hash(x, y);
   if (tiles.length < 3) return tiles[h % tiles.length];
-  const weights = tiles.map((_, i) => (i < 2 ? 5 : 1));
+  const weights = tiles.map((_, i) => TILE_WEIGHTS[i] ?? 1);
   let r = h % weights.reduce((a, b) => a + b, 0);
   for (let i = 0; i < weights.length; i++) {
     r -= weights[i]!;
