@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, initialState, isFree, isGameOver, research, step, tempAt } from './core/sim';
+import { alive, build, canAfford, initialState, isFree, isGameOver, research, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
@@ -7,6 +7,8 @@ import { ERAS } from './data/eras';
 import { TECHS } from './data/techs';
 import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
+import { loadArt } from './render/assets';
+import { Scene } from './render/scene';
 import { clearSave, loadGame, saveGame } from './core/save';
 import { costText, missingText, RateTracker, rateText, type ResKey } from './ui/format';
 import './ui/style.css';
@@ -235,39 +237,22 @@ function showIntro() {
 
 const app = new Application();
 const layer = new Container();
+const overlay = new Container();
 let cell = 32;
 
-function tempColor(t: number): number {
-  const k = Math.max(0, Math.min(1, (t + 20) / 55));
-  const r = Math.round(20 + 200 * k), g = Math.round(40 + 70 * k), b = Math.round(90 - 60 * k);
-  return (r << 16) | (g << 8) | b;
-}
-
 function draw() {
-  layer.removeChildren().forEach((c) => c.destroy());
-  const g = new Graphics();
-  for (let y = 0; y < state.h; y++)
-    for (let x = 0; x < state.w; x++)
-      g.rect(x * cell, y * cell, cell - 1, cell - 1).fill(tempColor(tempAt(state, x, y)));
-  g.circle((state.reactor.x + 0.5) * cell, (state.reactor.y + 0.5) * cell, cell * 0.45).fill(0xffe066);
-  for (const b of state.buildings) g.rect(b.x * cell + 3, b.y * cell + 3, cell - 7, cell - 7).fill(0x2d6a4f);
-  for (const p of alive(state)) g.circle((p.x + 0.5) * cell + (p.id % 5) * 3 - 6, (p.y + 0.5) * cell + (p.id % 3) * 3 - 3, cell * 0.12).fill(0xffffff);
+  scene.setState(state, cell);
   // Предпросмотр постройки под курсором: зелёный — можно, красный — нельзя
+  overlay.removeChildren().forEach((c) => c.destroy());
   if (hover && !isGameOver(state)) {
     const ok = isFree(state, hover.x, hover.y) && canAfford(state.res, selected);
-    g.rect(hover.x * cell + 1, hover.y * cell + 1, cell - 3, cell - 3).stroke({ width: 2, color: ok ? 0x7ddc9c : 0xff6b6b });
-  }
-  layer.addChild(g);
-  for (const b of state.buildings) {
-    const t = new Text({ text: RU.icons[b.kind], style: { fontSize: cell * 0.5, fill: 0xffffff } });
-    t.position.set(b.x * cell + cell * 0.28, b.y * cell + cell * 0.2);
-    layer.addChild(t);
+    overlay.addChild(new Graphics().rect(hover.x * cell + 1, hover.y * cell + 1, cell - 3, cell - 3).stroke({ width: 2, color: ok ? 0x7ddc9c : 0xff6b6b }));
   }
   if (hover && isFree(state, hover.x, hover.y)) {
     const t = new Text({ text: RU.icons[selected], style: { fontSize: cell * 0.5, fill: 0xffffff } });
     t.alpha = 0.55;
     t.position.set(hover.x * cell + cell * 0.28, hover.y * cell + cell * 0.2);
-    layer.addChild(t);
+    overlay.addChild(t);
   }
   renderPanels();
 }
@@ -320,6 +305,7 @@ function cellAt(e: { clientX: number; clientY: number }) {
 
 let timer: number | undefined;
 function schedule() {
+  scene.setSpeed(speed);
   clearInterval(timer);
   if (speed > 0 && !isGameOver(state)) timer = window.setInterval(tick, TICK_MS / speed);
 }
@@ -346,9 +332,13 @@ function restart() {
   draw();
 }
 
+const art = await loadArt();
+const scene = new Scene(art);
 await app.init({ background: '#0b0f14', antialias: true, width: 10, height: 10 });
 view.append(app.canvas);
+layer.addChild(scene.root, overlay);
 app.stage.addChild(layer);
+app.ticker.add((t) => scene.update(t.deltaMS));
 function tryBuild(e: PointerEvent) {
   if (isGameOver(state)) { restart(); return; }
   const { x, y } = cellAt(e);
