@@ -1,5 +1,5 @@
-import { Application } from 'pixi.js';
-import { alive, build, canAfford, research, initialState, isGameOver, step } from './core/sim';
+import { Application, Container, Graphics, Text } from 'pixi.js';
+import { alive, build, canAfford, initialState, isFree, isGameOver, research, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
@@ -9,157 +9,190 @@ import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
 import { loadArt } from './render/assets';
 import { Scene } from './render/scene';
+import { clearSave, loadGame, saveGame } from './core/save';
+import { costText, missingText, RateTracker, rateText, type ResKey } from './ui/format';
+import './ui/style.css';
 
-const TICK_MS = 2000; // 1 игровой час; игровой день = 48 с на 1x, вся игра около часа
+const SAVE_EVERY = 6; // автосохранение раз в 6 игровых часов
+const TICK_MS = 2000; // 1 игровой час; игровой день = 48 с на 1x
+const KINDS = Object.keys(BUILDINGS) as BuildingKind[];
+const RES_ICONS: Record<ResKey, string> = { food: '🍎', water: '💧', wood: '🪵', stone: '🪨', knowledge: '📖' };
 
-let state: State = initialState();
+/** localStorage может быть недоступен (приватный режим), тогда игра идёт без сохранения. */
+const store = (() => { try { return window.localStorage; } catch { return null; } })();
+const saved = store ? loadGame(store) : null;
+let state: State = saved ?? initialState();
 let speed = 1;
 let selected: BuildingKind = 'gatherer';
-let lastEra = 0;
-let banner = '';
-let barSig = '';
-let techSig = '';
+let lastEra = state.era;
+let hover: { x: number; y: number } | null = null;
+let flash: { text: string; until: number } | null = null;
+let bannerTimer: number | undefined;
+const rates = new RateTracker();
 
-function drawEvents() {
-  const act = state.active.map((a) => {
-    const e = EVENTS.find((x) => x.id === a.id);
-    return e ? `<div>${e.id === 'blizzard' ? '❄️' : '🤒'} ${e.name}: ещё ${Math.max(0, a.until - state.tick)} ч</div>` : '';
-  }).join('');
-  const recent = state.log.slice(-3).reverse().map((l) => `<small>День ${(l.tick / 24) | 0}, ${l.tick % 24} ч: ${l.text}</small>`).join('');
-  eventsEl.innerHTML = act + recent;
+const root = document.getElementById('app')!;
+root.className = 'game';
+root.innerHTML = `
+<header id="top">
+  <div id="res"></div>
+  <div id="time"><span id="day"></span><span id="speed"></span><button class="tbtn" id="helpBtn" title="${RU.help}">?</button><button class="tbtn" id="newBtn" title="${RU.newGame}">⟲</button></div>
+  <div id="needs"></div>
+</header>
+<div id="main">
+  <div id="stage">
+    <div id="view"></div>
+    <div id="alert" hidden></div>
+    <div id="banner" hidden></div>
+    <button id="goalsBtn"></button>
+  </div>
+  <aside id="side">
+    <div id="goals"></div>
+    <div id="events"></div>
+    <h3>${RU.techs} · 📖 <span id="kn"></span></h3>
+    <div id="techs"></div>
+    <h3>${RU.selected}</h3>
+    <div id="sel"></div>
+    <h3>${RU.legendTitle}</h3>
+    <div class="legend">${RU.legendHtml}</div>
+    <button id="sideClose">${RU.close}</button>
+  </aside>
+</div>
+<footer id="build"><div id="tip"></div><div id="bar"></div></footer>
+<div id="intro" hidden></div>`;
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
+const resEl = $('res'), needsEl = $('needs'), dayEl = $('day'), speedEl = $('speed');
+const stage = $('stage'), view = $('view'), alertEl = $('alert'), bannerEl = $('banner');
+const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs'), eventsEl = $('events');
+const tip = $('tip'), bar = $('bar'), intro = $('intro');
+
+// ——— Панели ———
+
+function renderSpeed() {
+  speedEl.innerHTML = '';
+  for (const [label, sp, title] of [['⏸', 0, RU.pause], ['1×', 1, ''], ['2×', 2, ''], ['4×', 4, '']] as const) {
+    const b = document.createElement('button');
+    b.className = `tbtn${speed === sp ? ' on' : ''}`;
+    b.textContent = label;
+    if (title) b.title = title;
+    b.onclick = () => setSpeed(sp);
+    speedEl.append(b);
+  }
 }
 
-function drawTechs() {
-  const kn = document.getElementById('kn');
-  if (kn) kn.textContent = String(state.res.knowledge | 0);
+function setSpeed(sp: number) {
+  speed = sp;
+  schedule();
+  renderSpeed();
+}
+
+function renderBar() {
+  bar.innerHTML = '';
+  KINDS.forEach((kind, i) => {
+    const c = BUILDINGS[kind].cost;
+    const ok = canAfford(state.res, kind);
+    const b = document.createElement('button');
+    b.className = `bbtn${kind === selected ? ' on' : ''}${ok ? '' : ' no'}`;
+    b.innerHTML = `<span class="ic">${RU.icons[kind]}</span><span class="nm">${RU.buildings[kind]}<span class="key">${i + 1}</span></span><span class="pr">${ok ? costText(c) : missingText(state.res, c)}</span>`;
+    b.title = `${RU.desc[kind]} ${RU.costWord}: ${costText(c)}`;
+    b.onclick = () => select(kind);
+    bar.append(b);
+  });
+  const c = BUILDINGS[selected].cost;
+  const ok = canAfford(state.res, selected);
+  tip.textContent = `${RU.icons[selected]} ${RU.desc[selected]} ${RU.tapToBuild}`;
+  selEl.innerHTML = `<div><b>${RU.icons[selected]} ${RU.buildings[selected]}</b></div><div>${RU.desc[selected]}</div>`
+    + `<div class="cost${ok ? '' : ' no'}">${RU.costWord}: ${costText(c)}${ok ? '' : ` (${missingText(state.res, c)})`}</div>`;
+}
+
+function select(kind: BuildingKind) {
+  selected = kind;
+  barSig = '';
+  renderBar();
+  draw();
+}
+
+let barSig = '';
+let techSig = '';
+let seenLog = state.log.length;
+
+const eventIcon = (id: string) => (id === 'blizzard' ? '❄️' : '🤒');
+
+function activeEvents() {
+  return state.active.flatMap((a) => {
+    const e = EVENTS.find((x) => x.id === a.id);
+    return e ? [{ text: `${eventIcon(e.id)} ${e.name}: ещё ${Math.max(0, a.until - state.tick)} ч` }] : [];
+  });
+}
+
+function renderEvents() {
+  const recent = state.log.slice(-3).reverse().map((l) => `<small>${RU.day} ${((l.tick / 24) | 0) + 1}, ${String(l.tick % 24).padStart(2, '0')}:00 · ${l.text}</small>`).join('');
+  const act = activeEvents().map((a) => `<div class="ev">${a.text}</div>`).join('');
+  eventsEl.innerHTML = act || recent ? `<h3>${RU.events}</h3>${act}${recent}` : '';
+  if (state.log.length < seenLog) seenLog = 0;
+  if (state.log.length > seenLog) {
+    showBanner(state.log[state.log.length - 1]!.text);
+    seenLog = state.log.length;
+  }
+}
+
+function renderTechs() {
+  $('kn').textContent = String(state.res.knowledge | 0);
   const sig = `${state.techs.join()}|${state.era}|${TECHS.map((t) => (state.res.knowledge >= t.cost ? 1 : 0)).join('')}`;
   if (sig === techSig) return;
   techSig = sig;
-  techsEl.innerHTML = `<b>${RU.techs} · ${RU.knowledge} 📖 <span id="kn"></span></b>`;
+  techsEl.innerHTML = '';
   for (const t of TECHS.filter((x) => x.era <= state.era)) {
     const b = document.createElement('button');
     const done = state.techs.includes(t.id);
     const locked = !done && (state.res.knowledge < t.cost || !!t.requires?.some((r) => !state.techs.includes(r)));
-    b.className = done ? 'done' : locked ? 'no' : '';
+    b.className = `tech${done ? ' done' : locked ? ' no' : ''}`;
     const need = t.requires?.filter((r) => !state.techs.includes(r)).map((r) => TECHS.find((x) => x.id === r)?.name).join(', ');
-    b.innerHTML = `${done ? '✓ ' : ''}${t.name}<small>${done ? RU.learned : `${t.cost} знаний`}${need ? ` · нужно: ${need}` : ''}</small><small>${t.desc}</small>`;
-    b.onclick = () => { const n = research(state, t.id); if (n) { state = n; draw(); } else msg.textContent = RU.cantResearch; };
+    b.innerHTML = `<span>${done ? '✓ ' : ''}${t.name}</span><small>${done ? RU.learned : `${t.cost} знаний`}${need ? ` · нужно: ${need}` : ''}</small><small>${t.desc}</small>`;
+    b.onclick = () => {
+      const n = research(state, t.id);
+      if (n) { state = n; persist(); draw(); } else showFlash(RU.cantResearch);
+    };
     techsEl.append(b);
   }
 }
 
-const root = document.getElementById('app')!;
-root.innerHTML = `
-<style>
-  body{font-family:system-ui,sans-serif}
-  #hud{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px;background:#121a24;font-size:14px}
-  #bar{display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:#0e141c}
-  #bar button{min-height:44px;min-width:44px;padding:6px 10px;border:1px solid #345;background:#1a2635;color:#cfe;border-radius:6px;font-size:14px}
-  #bar button.on{background:#2d6a4f;border-color:#6c9}
-  #msg{padding:4px 8px;min-height:20px;color:#fb7;font-size:13px}
-  #goals{padding:6px 8px;background:#101a14;font-size:13px}
-  #goals .era{display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:4px}
-  #goals .era b{color:#8d8}
-  #goals .era span.cur{color:#fff;font-weight:600}
-  #goals ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:2px 12px}
-  #goals li.done{color:#6c9}
-  #events{padding:0 8px;font-size:13px;background:#1a1414}
-  #events div{padding:4px 0;color:#f99}
-  #events small{display:block;color:#a88}
-  #techs{display:flex;flex-wrap:wrap;gap:6px;padding:6px 8px;background:#14121c;align-items:stretch}
-  #techs b{width:100%;font-size:13px;color:#b9f}
-  #techs button{min-height:44px;padding:6px 10px;border:1px solid #546;background:#201a2e;color:#dcf;border-radius:6px;font-size:13px;text-align:left;max-width:240px}
-  #techs button small{display:block;font-size:12px;color:#ba9}
-  #techs button.done{border-color:#6c9;color:#6c9}
-  #techs button.no{opacity:.5}
-  #bar button.no{opacity:.5}
-  #bar button small{display:block;font-size:12px;color:#fc8}
-  #bar button.on small{color:#fff}
-  #info{padding:4px 8px;font-size:13px;color:#9ab}
-  #needs{display:flex;flex-wrap:wrap;gap:4px 14px;padding:4px 8px;font-size:13px;background:#0e141c}
-  .bar{display:inline-block;width:60px;height:8px;background:#233;border-radius:4px;vertical-align:middle;margin-left:4px}
-  .bar i{display:block;height:100%;border-radius:4px}
-  #legend{padding:4px 8px;font-size:12px;color:#789}
-  #intro{position:fixed;inset:0;background:#000c;display:flex;align-items:center;justify-content:center;padding:12px;z-index:10}
-  #intro div{max-width:520px;max-height:100%;overflow:auto;background:#16202c;border:1px solid #456;border-radius:10px;padding:16px;line-height:1.45;font-size:15px}
-  #intro[hidden]{display:none}
-  #intro p{margin:0 0 10px}
-  #intro button{min-height:44px;width:100%;font-size:16px;background:#2d6a4f;color:#fff;border:0;border-radius:6px}
-  #view{touch-action:none}#view canvas{display:block}
-</style>
-<div id="hud"></div><div id="goals"></div><div id="events"></div><div id="techs"></div><div id="needs"></div><div id="bar"></div><div id="info"></div><div id="msg"></div><div id="view"></div><div id="legend"></div><div id="intro" hidden></div>`;
-const hud = root.querySelector<HTMLElement>('#hud')!;
-const bar = root.querySelector<HTMLElement>('#bar')!;
-const msg = root.querySelector<HTMLElement>('#msg')!;
-const view = root.querySelector<HTMLElement>('#view')!;
-const eventsEl = root.querySelector<HTMLElement>('#events')!;
-const techsEl = root.querySelector<HTMLElement>('#techs')!;
-const goalsEl = root.querySelector<HTMLElement>('#goals')!;
-const needs = root.querySelector<HTMLElement>('#needs')!;
-const info = root.querySelector<HTMLElement>('#info')!;
-const intro = root.querySelector<HTMLElement>('#intro')!;
-root.querySelector<HTMLElement>('#legend')!.textContent = RU.legend;
-
-function showIntro() {
-  speed = 0; schedule(); buildBar();
-  intro.innerHTML = `<div><h2 style="margin-top:0">${RU.title}</h2>${RU.intro.map((t) => `<p>${t}</p>`).join('')}<button>${RU.start}</button></div>`;
-  intro.hidden = false;
-  intro.querySelector('button')!.onclick = () => { intro.hidden = true; speed = 1; schedule(); buildBar(); };
-}
-
-function buildBar() {
-  bar.innerHTML = '';
-  for (const kind of Object.keys(BUILDINGS) as BuildingKind[]) {
-    const c = BUILDINGS[kind].cost;
-    const b = document.createElement('button');
-    const price = [c.wood ? `${c.wood} дерева` : '', c.stone ? `${c.stone} камня` : ''].filter(Boolean).join(' + ');
-    b.innerHTML = `${RU.icons[kind]} ${RU.buildings[kind]}<small>${price}</small>`;
-    b.className = `${kind === selected ? 'on' : ''} ${canAfford(state.res, kind) ? '' : 'no'}`.trim();
-    b.onclick = () => { selected = kind; buildBar(); };
-    bar.append(b);
-  }
-  const sc = BUILDINGS[selected].cost;
-  info.textContent = `${RU.icons[selected]} ${RU.buildings[selected]}: ${RU.desc[selected]} ${RU.costWord}: ${[sc.wood ? `${sc.wood} дерева` : '', sc.stone ? `${sc.stone} камня` : ''].filter(Boolean).join(' + ')}.`;
-  const help = document.createElement('button');
-  help.textContent = RU.help;
-  help.onclick = showIntro;
-  bar.append(help);
-  for (const [label, sp] of [[RU.pause, 0], ['1x', 1], ['2x', 2], ['4x', 4]] as const) {
-    const b = document.createElement('button');
-    b.textContent = label;
-    b.className = speed === sp ? 'on' : '';
-    b.onclick = () => { speed = sp; buildBar(); schedule(); };
-    bar.append(b);
-  }
-}
-
-const app = new Application();
-let cell = 32;
-
-function draw() {
-  scene.setState(state, cell);
+function renderPanels() {
   const r = state.res;
   const living = alive(state);
-  if (state.era > lastEra) { lastEra = state.era; banner = RU.eraDone; }
+
+  resEl.innerHTML = `<span class="chip" title="${RU.people}">👥 <b>${living.length}</b></span>`
+    + (Object.keys(RES_ICONS) as ResKey[]).map((k) => {
+      const rate = rates.perDay[k];
+      const cls = Math.round(rate) > 0 ? 'up' : Math.round(rate) < 0 ? 'down' : '';
+      const low = k !== 'knowledge' && r[k] < 15;
+      return `<span class="chip${low ? ' low' : ''}" title="${RU[k]}: ${rateText(rate)} ${RU.perDay}">${RES_ICONS[k]} <span class="name">${RU[k]}</span> <b>${r[k] | 0}</b> <span class="rate ${cls}">${rateText(rate)}</span></span>`;
+    }).join('');
+
+  const avg = (k: 'warmth' | 'hunger' | 'thirst' | 'health') => living.length ? living.reduce((a, p) => a + p[k], 0) / living.length : 0;
+  needsEl.innerHTML = (['warmth', 'hunger', 'thirst', 'health'] as const).map((k) => {
+    const v = avg(k);
+    const col = v > 60 ? '#6c9' : v > 30 ? '#eb5' : '#e55';
+    return `<span title="${RU.needs[k]}: ${v | 0}%">${RU.needIcons[k]}<span class="lbl">${RU.needs[k]}</span><span class="meter"><i style="width:${v}%;background:${col}"></i></span></span>`;
+  }).join('');
+
+  dayEl.textContent = `${RU.day} ${((state.tick / 24) | 0) + 1}, ${String(state.tick % 24).padStart(2, '0')}:00`;
+
+  // Цели и эпохи
+  if (state.era > lastEra) { lastEra = state.era; showBanner(RU.eraDone); }
   const eraDef = ERAS[Math.min(state.era, ERAS.length - 1)]!;
   const gp = goalProgress(state);
   const doneN = gp.filter((g) => g.done).length;
-  goalsEl.innerHTML = `<div class="era">` + ERAS.map((e, i) => `<span class="${i === state.era ? 'cur' : ''}">${i < state.era ? '✓' : i === state.era ? '▶' : '🔒'} ${e.name}</span>`).join('') + `</div>`
-    + (banner ? `<div style="color:#fd6;margin-bottom:4px">${banner}</div>` : '')
+  const nextIdx = gp.findIndex((g) => !g.done);
+  goalsEl.innerHTML = `<h3>${RU.era}</h3><div class="eras">`
+    + ERAS.map((e, i) => `<span class="${i < state.era ? 'done' : i === state.era ? 'cur' : ''}">${i < state.era ? '✓' : i === state.era ? '▶' : '🔒'} ${e.name}</span>`).join('') + '</div>'
     + (eraDef.playable && gp.length
-      ? `<div><b>${RU.goals} «${eraDef.name}» ${doneN}/${gp.length}</b></div><ul>` + gp.map((g) => `<li class="${g.done ? 'done' : ''}">${g.done ? '✓' : '○'} ${g.label}${g.target > 1 ? ` (${Math.floor(g.cur)}/${g.target})` : ''}</li>`).join('') + '</ul>'
+      ? `<h3>${RU.goals} · ${doneN}/${gp.length}</h3><div class="progress"><i style="width:${(doneN / gp.length) * 100}%"></i></div><ul class="goals">`
+        + gp.map((g, i) => `<li class="${g.done ? 'done' : i === nextIdx ? 'next' : ''}">${g.done ? '✓' : i === nextIdx ? '▶' : '○'} ${g.label}${g.target > 1 ? `<small>${Math.floor(g.cur)}/${g.target}</small>` : ''}</li>`).join('') + '</ul>'
       : `<div>${RU.eraSoon}</div>`);
-  const sig = (Object.keys(BUILDINGS) as BuildingKind[]).map((k) => (canAfford(state.res, k) ? 1 : 0)).join('');
-  if (sig !== barSig) { barSig = sig; buildBar(); }
-  drawEvents();
-  drawTechs();
-  hud.textContent = `${RU.day} ${(state.tick / 24) | 0} · 👥 ${living.length} · 🍎 ${r.food | 0} · 💧 ${r.water | 0} · 🪵 ${r.wood | 0} · 🪨 ${r.stone | 0} · 📖 ${r.knowledge | 0}`;
-  const avg = (k: 'warmth' | 'hunger' | 'thirst' | 'health') => living.length ? living.reduce((a, p) => a + p[k], 0) / living.length : 0;
-  needs.innerHTML = (['warmth', 'hunger', 'thirst', 'health'] as const).map((k) => {
-    const v = avg(k);
-    const col = v > 60 ? '#6c9' : v > 30 ? '#eb5' : '#e55';
-    return `<span>${RU.needs[k]}<span class="bar"><i style="width:${v}%;background:${col}"></i></span></span>`;
-  }).join('');
+  goalsBtn.textContent = gp.length ? `🎯 ${RU.goals} ${doneN}/${gp.length}` : `🎯 ${eraDef.name}`;
+
+  // Предупреждения: временное сообщение важнее постоянных подсказок
   const workplaces = state.buildings.filter((b) => BUILDINGS[b.kind].worker).length;
   const hints: string[] = [];
   if (avg('warmth') < 35) hints.push(RU.freezing);
@@ -167,25 +200,135 @@ function draw() {
   if (r.water < 15 || avg('thirst') < 35) hints.push(RU.thirsty);
   if (r.wood < 15) hints.push(RU.noWood);
   if (workplaces > living.length) hints.push(RU.noWorker);
-  if (!isGameOver(state)) msg.textContent = hints[0] ?? '';
+  if (flash && flash.until < performance.now()) flash = null;
+  const over = isGameOver(state);
+  const text = over ? RU.gameOver : flash?.text ?? hints[0] ?? activeEvents()[0]?.text ?? '';
+  alertEl.hidden = !text;
+  alertEl.textContent = text;
+  alertEl.classList.toggle('bad', over || !!flash);
+
+  renderEvents();
+  renderTechs();
+
+  const sig = KINDS.map((k) => (canAfford(state.res, k) ? 1 : 0)).join('') + (state.res.wood | 0) + (state.res.stone | 0);
+  if (sig !== barSig) { barSig = sig; renderBar(); }
 }
 
-function resize() {
-  const top = view.getBoundingClientRect().top;
-  cell = Math.max(16, Math.floor(Math.min(innerWidth / state.w, (innerHeight - top - 4) / state.h)));
-  app.renderer.resize(cell * state.w, cell * state.h);
+function showBanner(text: string) {
+  bannerEl.textContent = text;
+  bannerEl.hidden = false;
+  clearTimeout(bannerTimer);
+  bannerTimer = window.setTimeout(() => { bannerEl.hidden = true; }, 5000);
+}
+
+function showFlash(text: string) {
+  flash = { text, until: performance.now() + 2000 };
+  renderPanels();
+}
+
+function showIntro() {
+  setSpeed(0);
+  intro.innerHTML = `<div><h2 style="margin-top:0">${RU.title}</h2>${RU.intro.map((t) => `<p>${t}</p>`).join('')}<button>${RU.start}</button></div>`;
+  intro.hidden = false;
+  intro.querySelector('button')!.onclick = () => { intro.hidden = true; setSpeed(1); };
+}
+
+// ——— Карта ———
+
+const app = new Application();
+const layer = new Container();
+const overlay = new Container();
+let cell = 32;
+
+function draw() {
+  scene.setState(state, cell);
+  // Предпросмотр постройки под курсором: зелёный — можно, красный — нельзя
+  overlay.removeChildren().forEach((c) => c.destroy());
+  if (hover && !isGameOver(state)) {
+    const ok = isFree(state, hover.x, hover.y) && canAfford(state.res, selected);
+    overlay.addChild(new Graphics().rect(hover.x * cell + 1, hover.y * cell + 1, cell - 3, cell - 3).stroke({ width: 2, color: ok ? 0x7ddc9c : 0xff6b6b }));
+  }
+  if (hover && isFree(state, hover.x, hover.y)) {
+    const t = new Text({ text: RU.icons[selected], style: { fontSize: cell * 0.5, fill: 0xffffff } });
+    t.alpha = 0.55;
+    t.position.set(hover.x * cell + cell * 0.28, hover.y * cell + cell * 0.2);
+    overlay.addChild(t);
+  }
+  renderPanels();
+}
+
+// Камера: карта занимает всю область, её можно двигать пальцем/мышью и приближать.
+let fit = 32;
+let zoom = 1;
+const MIN_TOUCH_CELL = 30;
+
+function clampPan() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  const mw = cell * state.w, mh = cell * state.h;
+  layer.x = mw <= w ? (w - mw) / 2 : Math.min(0, Math.max(w - mw, layer.x));
+  layer.y = mh <= h ? (h - mh) / 2 : Math.min(0, Math.max(h - mh, layer.y));
+}
+
+/** Меняет масштаб, удерживая точку (px, py) экрана на месте. */
+function setZoom(z: number, px: number, py: number) {
+  const prev = cell;
+  zoom = Math.max(1, Math.min(4, z));
+  cell = Math.max(12, Math.round(fit * zoom));
+  layer.x = px - ((px - layer.x) * cell) / prev;
+  layer.y = py - ((py - layer.y) * cell) / prev;
+  clampPan();
   draw();
+}
+
+function centerOnReactor() {
+  layer.x = stage.clientWidth / 2 - (state.reactor.x + 0.5) * cell;
+  layer.y = stage.clientHeight / 2 - (state.reactor.y + 0.5) * cell;
+  clampPan();
+}
+
+let firstLayout = true;
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  fit = Math.max(8, Math.min(w / state.w, h / state.h));
+  // На телефоне клетки не мельче пальца: карта крупнее экрана и прокручивается
+  if (firstLayout && matchMedia('(pointer: coarse)').matches && fit < MIN_TOUCH_CELL) zoom = MIN_TOUCH_CELL / fit;
+  cell = Math.max(12, Math.round(fit * zoom));
+  app.renderer.resize(w, h);
+  if (firstLayout) { centerOnReactor(); firstLayout = false; } else clampPan();
+  draw();
+}
+
+function cellAt(e: { clientX: number; clientY: number }) {
+  const rect = app.canvas.getBoundingClientRect();
+  return { x: Math.floor((e.clientX - rect.left - layer.x) / cell), y: Math.floor((e.clientY - rect.top - layer.y) / cell) };
 }
 
 let timer: number | undefined;
 function schedule() {
   scene.setSpeed(speed);
   clearInterval(timer);
-  if (speed > 0) timer = window.setInterval(tick, TICK_MS / speed);
+  if (speed > 0 && !isGameOver(state)) timer = window.setInterval(tick, TICK_MS / speed);
+}
+function persist() {
+  if (store) saveGame(store, state);
 }
 function tick() {
+  const before = state.res;
   state = step(state);
-  if (isGameOver(state)) { clearInterval(timer); msg.textContent = RU.gameOver; }
+  rates.record(before, state.res);
+  if (state.tick % SAVE_EVERY === 0 || isGameOver(state)) persist();
+  if (isGameOver(state)) clearInterval(timer);
+  draw();
+}
+
+function restart() {
+  if (store) clearSave(store);
+  state = initialState();
+  lastEra = 0;
+  techSig = '';
+  seenLog = 0;
+  rates.reset();
+  schedule();
   draw();
 }
 
@@ -193,18 +336,95 @@ const art = await loadArt();
 const scene = new Scene(art);
 await app.init({ background: '#0b0f14', antialias: true, width: 10, height: 10 });
 view.append(app.canvas);
-app.stage.addChild(scene.root);
+layer.addChild(scene.root, overlay);
+app.stage.addChild(layer);
 app.ticker.add((t) => scene.update(t.deltaMS));
-app.canvas.addEventListener('pointerdown', (e) => {
-  if (isGameOver(state)) { state = initialState(); lastEra = 0; banner = ''; techSig = ''; msg.textContent = ''; schedule(); draw(); return; }
-  const rect = app.canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left) / cell), y = Math.floor((e.clientY - rect.top) / cell);
+function tryBuild(e: PointerEvent) {
+  if (isGameOver(state)) { restart(); return; }
+  const { x, y } = cellAt(e);
   const next = build(state, selected, x, y);
-  if (!next) { msg.textContent = RU.cantBuild; return; }
+  if (!next) {
+    showFlash(!canAfford(state.res, selected) ? `${RU.notEnough}: ${missingText(state.res, BUILDINGS[selected].cost)}` : RU.cellBusy);
+    return;
+  }
   state = next;
+  persist();
+  if (e.pointerType !== 'mouse') hover = null;
+  draw();
+}
+
+// Касание без сдвига — постройка; перетаскивание — сдвиг карты; два пальца — масштаб.
+const pointers = new Map<number, { x: number; y: number }>();
+let dragFrom: { x: number; y: number; lx: number; ly: number } | null = null;
+let dragged = false;
+let pinch: { d: number; zoom: number } | null = null;
+const dist = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a!.x - b!.x, a!.y - b!.y); };
+
+app.canvas.addEventListener('pointerdown', (e) => {
+  app.canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) { dragFrom = { x: e.clientX, y: e.clientY, lx: layer.x, ly: layer.y }; dragged = false; }
+  else if (pointers.size === 2) { pinch = { d: dist(), zoom }; dragged = true; }
+});
+app.canvas.addEventListener('pointermove', (e) => {
+  if (pointers.has(e.pointerId)) {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const rect = app.canvas.getBoundingClientRect();
+      setZoom(pinch.zoom * (dist() / pinch.d), (a!.x + b!.x) / 2 - rect.left, (a!.y + b!.y) / 2 - rect.top);
+      return;
+    }
+    if (dragFrom) {
+      const dx = e.clientX - dragFrom.x, dy = e.clientY - dragFrom.y;
+      if (!dragged && Math.hypot(dx, dy) > 8) dragged = true;
+      if (dragged) { layer.x = dragFrom.lx + dx; layer.y = dragFrom.ly + dy; clampPan(); hover = null; draw(); return; }
+    }
+  }
+  if (e.pointerType !== 'mouse') return;
+  const c = cellAt(e);
+  if (hover?.x === c.x && hover.y === c.y) return;
+  hover = c;
   draw();
 });
-addEventListener('resize', resize);
-buildBar();
+const endPointer = (e: PointerEvent) => {
+  if (!pointers.delete(e.pointerId)) return;
+  if (pointers.size === 0) {
+    if (!dragged && e.type === 'pointerup') tryBuild(e);
+    dragFrom = null;
+    pinch = null;
+  } else if (pointers.size === 1) {
+    const [p] = [...pointers.values()];
+    dragFrom = { x: p!.x, y: p!.y, lx: layer.x, ly: layer.y };
+    pinch = null;
+  }
+};
+app.canvas.addEventListener('pointerup', endPointer);
+app.canvas.addEventListener('pointercancel', endPointer);
+app.canvas.addEventListener('pointerleave', () => { if (!pointers.size) { hover = null; draw(); } });
+app.canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = app.canvas.getBoundingClientRect();
+  setZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - rect.left, e.clientY - rect.top);
+}, { passive: false });
+
+goalsBtn.onclick = () => root.classList.add('sheet');
+$('sideClose').onclick = () => root.classList.remove('sheet');
+$('helpBtn').onclick = showIntro;
+$('newBtn').onclick = () => { if (confirm(RU.newGameConfirm)) { restart(); showIntro(); } };
+addEventListener('pagehide', persist);
+document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+addEventListener('keydown', (e) => {
+  if (!intro.hidden) return;
+  const n = Number(e.key);
+  if (n >= 1 && n <= KINDS.length) select(KINDS[n - 1]!);
+  else if (e.key === ' ') { e.preventDefault(); setSpeed(speed === 0 ? 1 : 0); }
+});
+new ResizeObserver(resize).observe(stage);
+renderSpeed();
+renderBar();
 resize();
-showIntro();
+if (saved) {
+  setSpeed(1);
+  showFlash(`${RU.loaded}: ${RU.day} ${((state.tick / 24) | 0) + 1}`);
+} else showIntro();
