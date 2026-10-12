@@ -78,6 +78,9 @@ export function drawGround(layer: Container, state: State, cell: number, art: Ar
   layer.addChild(g);
 }
 
+/** Размер декора в клетках по длинной стороне картинки: ёлка ~2 роста человека, кусты и камни по колено. */
+const DECOR_SIZE: Record<DecorKey, number> = { tree_a: 2.1, tree_b: 1.8, bush: 0.85, rocks: 0.85, tuft: 0.55, stump: 0.7 };
+
 /** Деревья, кусты и камни: расставляются по хэшу клетки, поэтому не меняются между перерисовками. */
 export function drawDecor(layer: Container, state: State, cell: number, art: Art) {
   const taken = new Set(state.buildings.map((b) => `${b.x},${b.y}`));
@@ -96,7 +99,7 @@ export function drawDecor(layer: Container, state: State, cell: number, art: Art
       const tex = kind && art.decor[kind];
       if (!tex) continue;
       const jx = ((h >> 4) % 5 - 2) * cell * 0.04;
-      layer.addChild(place(tex, (x + 0.5) * cell + jx, (y + 1) * cell - 1, cell * 0.95));
+      layer.addChild(place(tex, (x + 0.5) * cell + jx, (y + 1) * cell - 1, cell * DECOR_SIZE[kind!]));
     }
 }
 
@@ -108,7 +111,7 @@ export interface ActorRefs {
 }
 
 /** Ширина спрайта здания в клетках (по длинной стороне): картинки в стиле персонажей крупнее клетки. */
-const BUILDING_SIZE: Partial<Record<Building['kind'], number>> = { campfire: 1.15, purifier: 1, hut: 1.35 };
+const BUILDING_SIZE: Partial<Record<Building['kind'], number>> = { campfire: 1.15, hut: 1.35 };
 const DEFAULT_BUILDING_SIZE = 1.35;
 const REACTOR_SIZE = 2.3;
 
