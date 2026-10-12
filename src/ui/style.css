@@ -46,6 +46,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #alert { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 16px); padding: 6px 12px; background: #2a1a0ecc; border: 1px solid var(--warn); color: var(--warn); border-radius: 18px; font-size: 14px; text-align: center; pointer-events: none; }
 #alert[hidden] { display: none; }
 #alert.bad { background: #2a0e0ecc; border-color: var(--bad); color: #ffd0d0; }
+#budget { position: absolute; top: 8px; left: 8px; padding: 3px 10px; background: #0e1a2acc; border: 1px solid #5a6b80; color: #cfe3ff; border-radius: 14px; font-size: 12px; pointer-events: none; }
+#budget.bad { border-color: var(--warn); color: var(--warn); }
 #forecast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 16px); padding: 4px 12px; background: #0e1a2acc; border: 1px solid #6aa9ff; color: #cfe3ff; border-radius: 18px; font-size: 13px; text-align: center; pointer-events: none; white-space: nowrap; }
 #forecast[hidden], #heatLegend[hidden] { display: none; }
 #forecast.soon { border-color: var(--warn); color: var(--warn); }

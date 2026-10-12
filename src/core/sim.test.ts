@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { build, forecast, initialState, isGameOver, research, step, tempAt, AMBIENT } from './sim';
+import { build, forecast, initialState, isGameOver, research, step, tempAt, AMBIENT, nightShift, heatFactor, heatDemand, heatCapacity, isNight } from './sim';
 
 const run = (s: ReturnType<typeof initialState>, n: number) => {
   for (let i = 0; i < n; i++) s = step(s);
@@ -8,9 +8,9 @@ const run = (s: ReturnType<typeof initialState>, n: number) => {
 
 describe('температура', () => {
   it('у реактора тепло, вдали — холод', () => {
-    const s = initialState();
+    const s = { ...initialState(), tick: 12 };
     expect(tempAt(s, s.reactor.x, s.reactor.y)).toBeGreaterThan(20);
-    expect(tempAt(s, 0, 0)).toBe(AMBIENT);
+    expect(tempAt(s, 0, 0)).toBe(AMBIENT + nightShift(s));
   });
   it('костёр греет соседние клетки', () => {
     const s = build(initialState(), 'campfire', 1, 1)!;
@@ -163,5 +163,34 @@ describe('прогноз событий', () => {
   it('не обещает уже идущее событие', () => {
     const s = { ...initialState(), tick: 100, active: [{ id: 'blizzard', until: 105 }] };
     expect(forecast(s, 3).some((f) => f.id === 'blizzard')).toBe(false);
+  });
+});
+
+describe('тепловой бюджет, дрова, ночь', () => {
+  it('перегрузка бюджета ослабляет обогрев, костёр повышает ёмкость', () => {
+    let s = { ...initialState(), tick: 12, res: { ...initialState().res, wood: 900, stone: 900 } };
+    expect(heatFactor(s)).toBe(1);
+    for (let i = 0; i < 9; i++) s = build(s, 'purifier', 1 + i, 1)!;
+    expect(heatDemand(s)).toBeGreaterThan(heatCapacity(s));
+    const hot = heatFactor(s);
+    expect(hot).toBeLessThan(1);
+    expect(tempAt(s, s.reactor.x + 1, s.reactor.y)).toBeLessThan(tempAt({ ...initialState(), tick: 12 }, s.reactor.x + 1, s.reactor.y));
+    const withFire = build(s, 'campfire', 20, 14)!;
+    expect(heatFactor(withFire)).toBeGreaterThan(hot);
+  });
+  it('ночью холоднее', () => {
+    const s = initialState();
+    expect(isNight(2)).toBe(true);
+    expect(isNight(13)).toBe(false);
+    expect(tempAt({ ...s, tick: 13 }, 0, 0)).toBeGreaterThan(tempAt({ ...s, tick: 2 }, 0, 0));
+  });
+  it('костёр и хижины жгут дрова; без дров гаснут', () => {
+    let s = build(build(initialState(), 'campfire', 1, 1)!, 'hut', 2, 2)!;
+    s = { ...s, tick: 12, res: { ...s.res, wood: 10 } };
+    expect(step(s).res.wood).toBeLessThan(10);
+    expect(step(s).lit).toBe(true);
+    const dry = step({ ...s, res: { ...s.res, wood: 0 } });
+    expect(dry.lit).toBe(false);
+    expect(tempAt(dry, 1, 2)).toBeLessThan(tempAt(s, 1, 2));
   });
 });

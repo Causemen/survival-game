@@ -1,4 +1,4 @@
-import { BUILDINGS, FOOD_RESTORE, HUNGER_DROP, HUT_CAPACITY, PRODUCTION, START_RES, THIRST_DROP, WATER_RESTORE } from '../data/buildings';
+import { BLIZZARD_FUEL_MULT, BUILDINGS, FOOD_RESTORE, FUEL_PER_HOUR, HEAT_PER_RESIDENT, HEAT_USE, HUNGER_DROP, HUT_CAPACITY, MIN_HEAT_FACTOR, NIGHT_DELTA, NIGHT_FUEL_MULT, PRODUCTION, reactorHeat, START_RES, THIRST_DROP, WATER_RESTORE } from '../data/buildings';
 import { EVENTS } from '../data/events';
 import { TECHS } from '../data/techs';
 import { eraDone } from './goals';
@@ -32,6 +32,7 @@ export function initialState(): State {
     era: 0,
     techs: [],
     seed: 1,
+    lit: true,
     active: [],
     log: [],
   };
@@ -48,13 +49,41 @@ export function rand(s: State, salt: number): number {
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 }
 
-/** Температура клетки: холод окружающей среды + тепло реактора и костров. */
+export const isNight = (tick: number): boolean => tick % 24 >= 20 || tick % 24 < 6;
+export const nightShift = (s: State): number => (isNight(s.tick) ? NIGHT_DELTA : 0);
+
+/** Сколько ТЕ реактора забирают жители и здания. */
+export function heatDemand(s: State): number {
+  const use = s.buildings.reduce((a, b) => a + Math.max(0, HEAT_USE[b.kind]), 0);
+  return alive(s).length * HEAT_PER_RESIDENT + use;
+}
+
+/** Тепловая ёмкость: реактор плюс горящие костры. */
+export function heatCapacity(s: State): number {
+  const fires = s.lit ? s.buildings.filter((b) => b.kind === 'campfire').length : 0;
+  return reactorHeat(s.reactor.level) - HEAT_USE.campfire * fires;
+}
+
+/** Доля полного обогрева от реактора: 1, пока бюджет сходится, ниже — при перегрузке. */
+export function heatFactor(s: State): number {
+  const d = heatDemand(s);
+  return d <= 0 ? 1 : Math.max(MIN_HEAT_FACTOR, Math.min(1, heatCapacity(s) / d));
+}
+
+/** Дров в час на костры и хижины с учётом ночи и метели. */
+export function fuelNeed(s: State): number {
+  const base = s.buildings.reduce((a, b) => a + (b.kind === 'campfire' ? FUEL_PER_HOUR.campfire : b.kind === 'hut' ? FUEL_PER_HOUR.hut : 0), 0);
+  const blizzard = s.active.some((a) => a.id === 'blizzard');
+  return base * (isNight(s.tick) ? NIGHT_FUEL_MULT : 1) * (blizzard ? BLIZZARD_FUEL_MULT : 1);
+}
+
+/** Температура клетки: холод среды (ночью холоднее) + тепло реактора (с учётом бюджета) и костров. */
 export function tempAt(s: State, x: number, y: number): number {
   const d = Math.hypot(x - s.reactor.x, y - s.reactor.y);
   const R = reactorRadius(s.reactor.level);
-  let t = AMBIENT + ambientShift(s) + 45 * Math.max(0, 1 - d / R);
+  let t = AMBIENT + ambientShift(s) + nightShift(s) + 45 * heatFactor(s) * Math.max(0, 1 - d / R);
   for (const b of s.buildings) {
-    if (b.kind !== 'campfire') continue;
+    if (b.kind !== 'campfire' || !s.lit) continue;
     t += 25 * Math.max(0, 1 - Math.hypot(x - b.x, y - b.y) / 2.5);
   }
   return t;
@@ -158,6 +187,12 @@ export function step(s: State): State {
   }
   res.knowledge += living.length * 0.1;
 
+  // Топка: костры и хижины жгут дрова; кончились — всё гаснет, пока не хватит на час растопки.
+  const need = fuelNeed(s);
+  const lit = res.wood >= need;
+  if (lit) res.wood -= need;
+  const sl: State = { ...s, lit };
+
   const huts = s.buildings.filter((b) => b.kind === 'hut').length;
   let housed = huts * (HUT_CAPACITY + techSum(s, 'hutCapacity'));
 
@@ -167,11 +202,11 @@ export function step(s: State): State {
     const wb = bId ? s.buildings.find((b) => b.id === bId) : undefined;
     const x = wb ? wb.x : s.reactor.x + ((p.id % 3) - 1);
     const y = wb ? wb.y : s.reactor.y + 1;
-    let temp = tempAt(s, x, y);
+    let temp = tempAt(sl, x, y);
     const inHut = housed > 0;
     if (inHut) {
       housed--;
-      temp += 12 + techSum(s, 'hutWarmth');
+      if (lit) temp += 12 + techSum(s, 'hutWarmth');
     }
     let { warmth, hunger, thirst, health } = p;
     warmth = clamp(warmth + clamp((temp - COMFORT) * 0.08, -3, 1), 0, 100);
@@ -187,7 +222,7 @@ export function step(s: State): State {
     return { ...p, x, y, warmth, hunger, thirst, health, alive: health > 0 };
   });
 
-  let next: State = { ...s, tick: s.tick + 1, res, settlers };
+  let next: State = { ...s, tick: s.tick + 1, res, settlers, lit };
   next = updateEvents(next);
   // Эпоха пройдена: награда — реактор усиливается (больше радиус тепла) и приходят знания.
   if (eraDone(next)) {

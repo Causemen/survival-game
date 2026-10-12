@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, forecast, initialState, isFree, isGameOver, research, step } from './core/sim';
+import { alive, build, canAfford, forecast, heatCapacity, heatDemand, initialState, isFree, isGameOver, research, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
@@ -44,6 +44,7 @@ root.innerHTML = `
     <div id="view"></div>
     <div id="alert" hidden></div>
     <div id="forecast" hidden></div>
+    <div id="budget"></div>
     <div id="heatLegend" hidden>${RU.heatLegend}</div>
     <div id="banner" hidden></div>
     <button id="goalsBtn"></button>
@@ -69,7 +70,7 @@ const resEl = $('res'), needsEl = $('needs'), dayEl = $('day'), speedEl = $('spe
 const stage = $('stage'), view = $('view'), alertEl = $('alert'), bannerEl = $('banner');
 const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs'), eventsEl = $('events');
 const tip = $('tip'), bar = $('bar'), intro = $('intro'), chapter = $('chapter');
-const forecastEl = $('forecast'), heatLegend = $('heatLegend'), heatBtn = $('heatBtn');
+const budgetEl = $('budget'), forecastEl = $('forecast'), heatLegend = $('heatLegend'), heatBtn = $('heatBtn');
 let heat = false;
 
 // ——— Панели ———
@@ -204,6 +205,8 @@ function renderPanels() {
   if (avg('warmth') < 35) hints.push(RU.freezing);
   if (r.food < 15 || avg('hunger') < 35) hints.push(RU.starving);
   if (r.water < 15 || avg('thirst') < 35) hints.push(RU.thirsty);
+  if (!state.lit) hints.push(RU.noFuel);
+  else if (heatDemand(state) > heatCapacity(state)) hints.push(RU.heatOver);
   if (r.wood < 15) hints.push(RU.noWood);
   if (workplaces > living.length) hints.push(RU.noWorker);
   if (flash && flash.until < performance.now()) flash = null;
@@ -212,6 +215,11 @@ function renderPanels() {
   alertEl.hidden = !text;
   alertEl.textContent = text;
   alertEl.classList.toggle('bad', over || !!flash);
+
+  // Тепловой бюджет реактора и дрова
+  const dem = Math.round(heatDemand(state)), cap = Math.round(heatCapacity(state));
+  budgetEl.textContent = `🌡️ ${RU.heatBudget} ${dem}/${cap}${state.lit ? '' : ' · 🔥✖'}`;
+  budgetEl.classList.toggle('bad', dem > cap || !state.lit);
 
   // Прогноз: ближайшее событие, которое ещё не началось
   const next = forecast(state)[0];

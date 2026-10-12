@@ -1,5 +1,8 @@
 import type { BuildingDef, BuildingKind, Resources } from '../core/types';
-import { B, PERSON_DAY, START } from './economy';
+import { B, HEAT_PER_RESIDENT, PERSON_DAY, REACTOR_HEAT, START } from './economy';
+export { HEAT_PER_RESIDENT };
+/** Тепловая ёмкость реактора по уровню (ТЕ). */
+export const reactorHeat = (level: number): number => REACTOR_HEAT[Math.min(REACTOR_HEAT.length, Math.max(1, level)) - 1]!;
 
 /** Часов в игровом дне: числа экономики заданы в день, тик симуляции — час. */
 export const HOURS_PER_DAY = 24;
@@ -37,6 +40,20 @@ export const PRODUCTION: Partial<Record<BuildingKind, Partial<Resources>>> = {
 };
 
 export const HUT_CAPACITY = 4;
+
+/** Тепловой бюджет: сколько ТЕ реактора забирает здание (отрицательное — отдаёт). Житель забирает HEAT_PER_RESIDENT. */
+export const HEAT_USE: Record<BuildingKind, number> = {
+  hut: 2, campfire: -5, gatherer: 2, woodcutter: 1, quarry: 1, purifier: 3,
+};
+/** Нижний предел обогрева реактора при полной перегрузке бюджета. */
+export const MIN_HEAT_FACTOR = 0.25;
+
+/** Дрова в час на растопку: костёр и хижина. Ночью ×1.5, в метель ×2. */
+export const FUEL_PER_HOUR = { campfire: 0.1, hut: 0.025 };
+export const NIGHT_FUEL_MULT = 1.5;
+export const BLIZZARD_FUEL_MULT = 2;
+/** Ночью холоднее (на столько градусов). */
+export const NIGHT_DELTA = -6;
 
 /** Стартовые запасы колонии (модель экономики). */
 export const START_RES: Resources = {

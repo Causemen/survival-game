@@ -17,8 +17,8 @@ export interface GameEvent {
 
 export const EVENTS: GameEvent[] = [
   {
-    id: 'blizzard', name: 'Метель', chance: 0.012, from: 48, duration: 12, ambientDelta: -15,
-    startText: 'Началась метель! Всюду холоднее на 15°.', endText: 'Метель стихла.',
+    id: 'blizzard', name: 'Метель', chance: 0.012, from: 48, duration: 18, ambientDelta: -22,
+    startText: 'Началась метель! Всюду холоднее на 22°, дрова горят вдвое быстрее.', endText: 'Метель стихла.',
   },
   {
     id: 'sickness', name: 'Болезнь', chance: 0.008, from: 72, duration: 24,

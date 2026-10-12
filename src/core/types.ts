@@ -49,6 +49,8 @@ export interface State {
   era: number;
   techs: string[];
   seed: number;
+  /** Горят ли костры и топятся ли хижины: false, если дрова кончились. */
+  lit: boolean;
   active: { id: string; until: number }[];
   log: { tick: number; text: string }[];
 }
