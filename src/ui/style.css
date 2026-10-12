@@ -46,6 +46,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #alert { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 16px); padding: 6px 12px; background: #2a1a0ecc; border: 1px solid var(--warn); color: var(--warn); border-radius: 18px; font-size: 14px; text-align: center; pointer-events: none; }
 #alert[hidden] { display: none; }
 #alert.bad { background: #2a0e0ecc; border-color: var(--bad); color: #ffd0d0; }
+#forecast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 16px); padding: 4px 12px; background: #0e1a2acc; border: 1px solid #6aa9ff; color: #cfe3ff; border-radius: 18px; font-size: 13px; text-align: center; pointer-events: none; white-space: nowrap; }
+#forecast[hidden], #heatLegend[hidden] { display: none; }
+#forecast.soon { border-color: var(--warn); color: var(--warn); }
+#heatLegend { position: absolute; right: 8px; bottom: 8px; padding: 4px 10px; background: #0b0f14cc; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; color: var(--muted); pointer-events: none; }
+#heatLegend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }
 #banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100% - 24px); padding: 16px 20px; background: #10241acc; border: 2px solid var(--good); border-radius: 12px; font-size: 18px; text-align: center; pointer-events: none; }
 #banner[hidden] { display: none; }
 #goalsBtn { display: none; }
@@ -91,6 +96,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .bbtn.on .pr { color: #fff; }
 .bbtn.no .ic, .bbtn.no .nm { opacity: .5; }
 .bbtn.no .pr { color: var(--bad); }
+
+/* Итог главы */
+#chapter { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center; padding: 12px; z-index: 11; }
+#chapter[hidden] { display: none; }
+#chapter > div { width: 100%; max-width: 420px; background: #16202c; border: 2px solid var(--good); border-radius: 12px; padding: 18px; line-height: 1.45; font-size: 15px; }
+#chapter h2 { margin: 0 0 4px; }
+#chapter .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 12px 0; }
+#chapter .stats span { padding: 6px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; }
+#chapter p { margin: 0 0 10px; color: var(--muted); }
+#chapter button { min-height: 48px; width: 100%; font-size: 17px; background: var(--accent); color: #fff; border: 0; border-radius: 8px; }
 
 /* Вступление */
 #intro { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center; padding: 12px; z-index: 10; }

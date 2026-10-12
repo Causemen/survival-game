@@ -1,5 +1,5 @@
 import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
-import { reactorRadius, tempAt } from '../core/sim';
+import { COMFORT, reactorRadius, tempAt } from '../core/sim';
 import type { Building, State } from '../core/types';
 import { RU } from '../i18n';
 import type { Art, DecorKey } from './assets';
@@ -78,6 +78,22 @@ export function drawGround(layer: Container, state: State, cell: number, art: Ar
       tint.rect(x * cell, y * cell, cell, cell).fill({ color: tempColor(t), alpha: 0.25 });
     }
   if (textured) layer.addChild(tint);
+  layer.addChild(g);
+}
+
+/** Границы зон тепловой карты, °: ниже FROST люди мёрзнут быстро, ниже COMFORT тепло всё равно уходит. */
+export const HEAT_FROST = -10;
+export const HEAT_COLORS = { frost: 0x2f5fd0, cold: 0x5fb4e8, warm: 0xf08a24 } as const;
+
+/** Тепловая карта: три зоны цветом поверх земли (мороз, холодно, тепло). */
+export function drawHeatMap(layer: Container, state: State, cell: number) {
+  const g = new Graphics();
+  for (let y = 0; y < state.h; y++)
+    for (let x = 0; x < state.w; x++) {
+      const t = tempAt(state, x, y);
+      const color = t < HEAT_FROST ? HEAT_COLORS.frost : t < COMFORT ? HEAT_COLORS.cold : HEAT_COLORS.warm;
+      g.rect(x * cell, y * cell, cell, cell).fill({ color, alpha: 0.55 });
+    }
   layer.addChild(g);
 }
 
