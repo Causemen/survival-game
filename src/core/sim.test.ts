@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { build, initialState, isGameOver, step, tempAt, AMBIENT } from './sim';
+import { build, initialState, isGameOver, research, step, tempAt, AMBIENT } from './sim';
 
 const run = (s: ReturnType<typeof initialState>, n: number) => {
   for (let i = 0; i < n; i++) s = step(s);
@@ -61,19 +61,21 @@ import { goalProgress } from './goals';
 describe('цели и эпохи', () => {
   it('цели считают построенное', () => {
     const s = build(initialState(), 'gatherer', 1, 1)!;
-    expect(goalProgress(s).find((g) => g.label.includes('Собирателя'))!.done).toBe(true);
+    expect(goalProgress(s).find((g) => g.label.includes('Собирател'))!.cur).toBe(1);
   });
   it('прохождение эпохи усиливает реактор и открывает следующую', () => {
     let s = initialState();
-    s = { ...s, res: { ...s.res, wood: 500, stone: 100, food: 500, water: 500 } };
-    for (const [k, x, y] of [['gatherer', 11, 7], ['purifier', 13, 7], ['woodcutter', 11, 9], ['hut', 13, 9], ['hut', 12, 10]] as const) s = build(s, k, x, y)!;
-    s = run(s, 80);
+    s = { ...s, res: { ...s.res, wood: 900, stone: 300, food: 2000, water: 2000, knowledge: 100 } };
+    for (const [k, x, y] of [['gatherer', 11, 7], ['gatherer', 13, 7], ['gatherer', 12, 6], ['purifier', 11, 9], ['purifier', 13, 9], ['woodcutter', 12, 10], ['quarry', 10, 9], ['hut', 10, 8], ['hut', 14, 8], ['hut', 12, 11]] as const) s = build(s, k, x, y)!;
+    s = research(research(s, 'boiling')!, 'foraging')!;
+    s = run(s, 239);
+    expect(s.era).toBe(0);
+    s = run(s, 2);
     expect(s.era).toBe(1);
     expect(s.reactor.level).toBe(2);
   });
 });
 
-import { research } from './sim';
 
 describe('технологии', () => {
   it('изучение тратит знания и усиливает производство', () => {
