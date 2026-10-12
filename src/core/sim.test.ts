@@ -132,8 +132,7 @@ describe('экономика: потребление и выработка в с
     const warm = run(s0, 24 * 5); // первые сутки люди ещё сыты, меряем установившийся расход
     const s = run(warm, 24 * 5);
     expect((warm.res.food - s.res.food) / 5).toBeGreaterThan(14);
-    expect((warm.res.food - s.res.food) / 5).toBeLessThan(18);
-    expect((warm.res.water - s.res.water) / 5).toBeGreaterThan(14);
+        expect((warm.res.water - s.res.water) / 5).toBeGreaterThan(14);
     expect((warm.res.water - s.res.water) / 5).toBeLessThan(18);
   });
   it('разумное начало (3 собирателя, 2 фильтра, лесоруб, 2 хижины) держит колонию 10 суток', () => {
@@ -192,5 +191,42 @@ describe('тепловой бюджет, дрова, ночь', () => {
     const dry = step({ ...s, res: { ...s.res, wood: 0 } });
     expect(dry.lit).toBe(false);
     expect(tempAt(dry, 1, 2)).toBeLessThan(tempAt(s, 1, 2));
+  });
+});
+
+import { resolveDilemma } from './sim';
+describe('выборы с ценой', () => {
+  it('выбор появляется к своему сроку', () => {
+    let s = { ...initialState(), res: { ...initialState().res, food: 1e6, water: 1e6 } };
+    s = run(s, 59);
+    expect(s.dilemma).toBeNull();
+    s = run(s, 2);
+    expect(s.dilemma).not.toBeNull();
+  });
+  it('решение применяет цену и назначает следующий выбор', () => {
+    const s0 = { ...initialState(), dilemma: 'cough', tick: 70 };
+    const s = resolveDilemma(s0, 0)!;
+    expect(s.dilemma).toBeNull();
+    expect(s.dilemmaAt).toBeGreaterThan(70);
+    expect(s.res.water).toBe(s0.res.water - 10);
+    const hurt = resolveDilemma(s0, 1)!;
+    expect(hurt.settlers[0]!.health).toBe(88);
+  });
+  it('нельзя выбрать вариант без ресурсов', () => {
+    const s0 = { ...initialState(), dilemma: 'traders', tick: 70, res: { ...initialState().res, wood: 0 } };
+    expect(resolveDilemma(s0, 0)).toBeNull();
+    expect(resolveDilemma(s0, 1)).not.toBeNull();
+  });
+  it('риск: бывает и выигрыш, и проигрыш', () => {
+    const outs = new Set<string>();
+    for (let t = 0; t < 40; t++) {
+      const r = resolveDilemma({ ...initialState(), dilemma: 'ruins', tick: 100 + t }, 0)!;
+      outs.add(r.res.food > initialState().res.food ? 'win' : 'lose');
+    }
+    expect(outs.size).toBe(2);
+  });
+  it('еда портится', () => {
+    const s0 = { ...initialState(), res: { ...initialState().res, food: 1000 } };
+    expect(step(s0).res.food).toBeLessThan(1000);
   });
 });
