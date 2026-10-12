@@ -92,3 +92,29 @@
 - **Декор карты:** `decor/{tree_a,tree_b,bush,rocks,tuft,stump}.png`: ёлки растут за границей тепла реактора, кусты и камни по всей карте; расставляются по координатам клетки, поэтому не меняются между перерисовками.
 - **Эффекты кодом:** тёплое свечение реактора и костров, дым и пар, снегопад (в метель сильнее), смена дня и ночи по игровому часу.
 Всё это можно пересоздать `python3 tools/pixel_art.py`.
+
+## 9. Крупные персонажи (листы кадров)
+Стиль референсов: детальный пиксель-арт, фигура ~40 px, 30+ приглушённых цветов, тёмный контур, снаряжение (противогаз, рюкзак, топор, очки, халат), мягкая грязь и потёртости.
+
+**Как подключить.** Для каждого персонажа и действия нужен один горизонтальный лист: кадры одинакового размера в ряд, одинаковый холст (ноги стоят на одной линии), однотонный фон (ярко-пурпурный `#FF00FF` или любой, угол картинки считается фоном) либо прозрачный PNG. Файлы кладите в `public/assets/units/` и впишите в `public/assets/units/characters.json`:
+```json
+{ "characters": [
+  { "name": "scavenger", "anims": {
+    "idle": { "file": "units/scavenger_idle.png", "frames": 2 },
+    "walk": { "file": "units/scavenger_walk.png", "frames": 6 },
+    "work": { "file": "units/scavenger_work.png", "frames": 4 }
+  } }
+] }
+```
+Действия: `idle`, `walk`, `work`, `cold`. Нужны хотя бы `idle` или `walk`; недостающие действия заменяются стойкой. Персонажи раздаются жителям по кругу, смотрят вправо (влево игра отражает сама). Если файла нет, игра рисует маленьких жителей как раньше.
+
+**Промпт (на английском, с референсом).** Приложите к запросу одну из картинок-референсов и напишите:
+> Pixel art character sprite sheet for a 2D top-down survival game, in the exact style of the attached image: detailed pixel art, about 40 px tall character, thick dark outline, muted desaturated palette with dirt and wear, light from the top-left. Character: *[описание]*. Side view facing right, full body. Sheet: *[N]* frames of the *[walk cycle / idle breathing / chopping]* in one horizontal row, all frames exactly the same size on the same baseline, evenly spaced. Perfectly flat solid magenta background (#FF00FF), no shadow, no text, no border.
+
+Описания:
+- `scientist`: redhead woman in a white lab coat with goggles on her forehead and a ponytail, notebook in hand.
+- `gasmask_scientist`: man in a lab coat with a gas mask hanging at the chin, gloves, a satchel.
+- `medic`: person with a large medical backpack with a red cross, a respirator, a warm hooded jacket.
+- `scavenger`: person in a gas mask, a cap, a worn jacket and a backpack, an axe on the shoulder.
+
+Если Gemini выдаёт кадры разного размера, проще попросить по одному кадру и склеить; если нужна помощь, пришлите кадры в тред.

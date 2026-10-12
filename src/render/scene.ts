@@ -2,7 +2,7 @@ import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { alive, reactorRadius } from '../core/sim';
 import type { Settler, State } from '../core/types';
 import { BUILDINGS } from '../data/buildings';
-import { ANIMS, type Anim, type Art, type Gender } from './assets';
+import { type Anim, type Art, type Gender } from './assets';
 import { type ActorRefs, drawActors, drawDecor, drawGround, place, spriteScale } from './world';
 
 /** Кадров в секунду для каждого действия. */
@@ -13,6 +13,8 @@ const COLD_BELOW = 35;
 interface Person {
   id: number;
   gender: Gender;
+  /** Индекс крупного персонажа из art.characters, -1 — маленький житель. */
+  char: number;
   view: Sprite | Graphics;
   x: number;
   y: number;
@@ -148,8 +150,9 @@ export class Scene {
       let person = this.people.get(p.id);
       if (!person) {
         const gender: Gender = p.id % 2 ? 'female' : 'male';
+        const char = this.art.characters.length ? p.id % this.art.characters.length : -1;
         person = {
-          id: p.id, gender, view: this.makeView(gender), x: home.x, y: home.y, tx: home.x, ty: home.y, anim: 'idle',
+          id: p.id, gender, char, view: this.makeView(gender, char), x: home.x, y: home.y, tx: home.x, ty: home.y, anim: 'idle',
           t: Math.random() * 3, face: p.id % 3 ? 1 : -1, working: home.working, cold: false, wander: 2 + Math.random() * 5, gone: false,
         };
         this.people.set(p.id, person);
@@ -162,8 +165,16 @@ export class Scene {
     }
   }
 
-  private makeView(gender: Gender): Sprite | Graphics {
-    const frames = this.art.people[gender]?.idle;
+  private framesOf(p: { gender: Gender; char: number }, anim: Anim): Texture[] | undefined {
+    if (p.char >= 0) {
+      const ch = this.art.characters[p.char]!;
+      return ch[anim] ?? (anim === 'walk' ? undefined : ch.idle) ?? ch.walk;
+    }
+    return this.art.people[p.gender]?.[anim];
+  }
+
+  private makeView(gender: Gender, char: number): Sprite | Graphics {
+    const frames = this.framesOf({ gender, char }, 'idle');
     const tex = frames?.[0] ?? this.art[gender === 'male' ? 'settlerMale' : 'settlerFemale'] ?? this.art.settler;
     if (tex) {
       const s = new Sprite(tex);
@@ -199,16 +210,16 @@ export class Scene {
       const anim: Anim = moving ? 'walk' : p.cold ? 'cold' : p.working ? 'work' : 'idle';
       if (anim !== p.anim) { p.anim = anim; p.t = 0; }
       p.t += dt;
-      const frames = this.art.people[p.gender]?.[anim];
-      const frame = frames ? Math.floor(p.t * FPS[anim]) % ANIMS[anim] : 0;
+      const frames = this.framesOf(p, anim);
+      const frame = frames ? Math.floor(p.t * FPS[anim]) % frames.length : 0;
       const v = p.view;
       if (v instanceof Sprite) {
         if (frames) v.texture = frames[frame]!;
-        const k = spriteScale(v.texture, c * 0.5);
+        const k = p.char >= 0 ? (c * 1.15) / v.texture.height : spriteScale(v.texture, c * 0.5);
         v.scale.set(k * p.face, k);
         // Покачивание в пикселях картинки: на ходу подпрыгивает, мёрзнущий дрожит.
-        const bob = moving && frame === 1 ? k : 0;
-        const shiver = anim === 'cold' && frame === 1 ? k * p.face : 0;
+        const bob = moving && frame === 1 && p.char < 0 ? k : 0;
+        const shiver = anim === 'cold' && frame === 1 && p.char < 0 ? k * p.face : 0;
         v.position.set(Math.round(p.x + shiver), Math.round(p.y - bob));
       } else v.position.set(Math.round(p.x), Math.round(p.y));
       v.zIndex = p.y + 0.5;

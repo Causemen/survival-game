@@ -33,11 +33,20 @@ export type PersonFrames = Record<Anim, Texture[]>;
 export const DECOR = ['tree_a', 'tree_b', 'bush', 'rocks', 'tuft', 'stump'] as const;
 export type DecorKey = (typeof DECOR)[number];
 
+/** Крупные персонажи из листов кадров (units/characters.json), см. docs/ART.md, раздел 9. */
+export type CharacterFrames = Partial<Record<Anim, Texture[]>>;
+interface CharacterManifest {
+  characters: { name: string; anims: Partial<Record<Anim, { file: string; frames: number }>> }[];
+}
+const CHAR_MAX_HEIGHT = 128;
+
 export interface Art extends Partial<Record<ArtKey, Texture>> {
   /** Все найденные варианты плиток земли (ground_cold.png, ground_cold_1.png, …). */
   variants: Record<TileKey, Texture[]>;
   people: Partial<Record<Gender, Partial<PersonFrames>>>;
   decor: Partial<Record<DecorKey, Texture>>;
+  /** Персонажи по порядку из манифеста; если список не пуст, жители берут их вместо маленьких спрайтов. */
+  characters: CharacterFrames[];
 }
 
 /** Тайлы земли заполняют клетку целиком, остальное — спрайты на фоне, который нужно вырезать. */
@@ -59,7 +68,7 @@ async function loadTexture(file: string, sprite: boolean, trimmed = true): Promi
 }
 
 export async function loadArt(): Promise<Art> {
-  const art: Art = { variants: { groundCold: [], groundWarm: [] }, people: {}, decor: {} };
+  const art: Art = { variants: { groundCold: [], groundWarm: [] }, people: {}, decor: {}, characters: [] };
   await Promise.all([
     ...(Object.keys(ART_FILES) as ArtKey[]).map(async (key) => {
       if ((TILES as readonly ArtKey[]).includes(key)) {
@@ -83,12 +92,58 @@ export async function loadArt(): Promise<Art> {
         if (found.every((t): t is Texture => !!t)) (art.people[g] ??= {})[anim] = found;
       }),
     ),
+    loadCharacters().then((c) => { art.characters = c; }),
     ...DECOR.map(async (name) => {
       const tex = await loadTexture(`decor/${name}.png`, true);
       if (tex) art.decor[name] = tex;
     }),
   ]);
   return art;
+}
+
+async function loadCharacters(): Promise<CharacterFrames[]> {
+  let manifest: CharacterManifest;
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}assets/units/characters.json`);
+    if (!res.ok) return [];
+    manifest = (await res.json()) as CharacterManifest;
+  } catch {
+    return [];
+  }
+  const out = await Promise.all(
+    (manifest.characters ?? []).map(async (ch) => {
+      const frames: CharacterFrames = {};
+      await Promise.all(
+        (Object.keys(ch.anims) as Anim[]).map(async (anim) => {
+          const spec = ch.anims[anim];
+          if (!spec || !(anim in ANIMS) || !(spec.frames >= 1)) return;
+          const img = await loadImage(`${import.meta.env.BASE_URL}assets/${spec.file}`);
+          if (img) frames[anim] = sliceStrip(img, spec.frames);
+        }),
+      );
+      return frames;
+    }),
+  );
+  return out.filter((f) => f.idle || f.walk);
+}
+
+/**
+ * Режет горизонтальный лист на равные кадры. Фон вырезаем по всему листу сразу, края не обрезаем:
+ * у всех кадров один холст, чтобы ноги не «прыгали». Высокие кадры уменьшаем до CHAR_MAX_HEIGHT.
+ */
+function sliceStrip(img: HTMLImageElement, n: number): Texture[] {
+  const sheet = canvasOf(img.width, img.height);
+  sheet.getContext('2d', { willReadFrequently: true })!.drawImage(img, 0, 0);
+  const clean = removeBackground(sheet);
+  const fw = Math.floor(img.width / n);
+  const k = Math.min(1, CHAR_MAX_HEIGHT / img.height);
+  return Array.from({ length: n }, (_, i) => {
+    const c = canvasOf(Math.max(1, Math.round(fw * k)), Math.max(1, Math.round(img.height * k)));
+    c.getContext('2d')!.drawImage(clean, i * fw, 0, fw, img.height, 0, 0, c.width, c.height);
+    const tex = Texture.from(c);
+    if (img.height <= PIXEL_ART_MAX * 2) tex.source.scaleMode = 'nearest';
+    return tex;
+  });
 }
 
 function loadImage(src: string): Promise<HTMLImageElement | undefined> {
