@@ -7,17 +7,22 @@ import { ERAS } from './data/eras';
 import { TECHS } from './data/techs';
 import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
+import { clearSave, loadGame, saveGame } from './core/save';
 import { costText, missingText, RateTracker, rateText, type ResKey } from './ui/format';
 import './ui/style.css';
 
+const SAVE_EVERY = 6; // автосохранение раз в 6 игровых часов
 const TICK_MS = 2000; // 1 игровой час; игровой день = 48 с на 1x
 const KINDS = Object.keys(BUILDINGS) as BuildingKind[];
 const RES_ICONS: Record<ResKey, string> = { food: '🍎', water: '💧', wood: '🪵', stone: '🪨', knowledge: '📖' };
 
-let state: State = initialState();
+/** localStorage может быть недоступен (приватный режим), тогда игра идёт без сохранения. */
+const store = (() => { try { return window.localStorage; } catch { return null; } })();
+const saved = store ? loadGame(store) : null;
+let state: State = saved ?? initialState();
 let speed = 1;
 let selected: BuildingKind = 'gatherer';
-let lastEra = 0;
+let lastEra = state.era;
 let hover: { x: number; y: number } | null = null;
 let flash: { text: string; until: number } | null = null;
 let bannerTimer: number | undefined;
@@ -28,7 +33,7 @@ root.className = 'game';
 root.innerHTML = `
 <header id="top">
   <div id="res"></div>
-  <div id="time"><span id="day"></span><span id="speed"></span><button class="tbtn" id="helpBtn" title="${RU.help}">?</button></div>
+  <div id="time"><span id="day"></span><span id="speed"></span><button class="tbtn" id="helpBtn" title="${RU.help}">?</button><button class="tbtn" id="newBtn" title="${RU.newGame}">⟲</button></div>
   <div id="needs"></div>
 </header>
 <div id="main">
@@ -107,7 +112,7 @@ function select(kind: BuildingKind) {
 
 let barSig = '';
 let techSig = '';
-let seenLog = 0;
+let seenLog = state.log.length;
 
 const eventIcon = (id: string) => (id === 'blizzard' ? '❄️' : '🤒');
 
@@ -144,7 +149,7 @@ function renderTechs() {
     b.innerHTML = `<span>${done ? '✓ ' : ''}${t.name}</span><small>${done ? RU.learned : `${t.cost} знаний`}${need ? ` · нужно: ${need}` : ''}</small><small>${t.desc}</small>`;
     b.onclick = () => {
       const n = research(state, t.id);
-      if (n) { state = n; draw(); } else showFlash(RU.cantResearch);
+      if (n) { state = n; persist(); draw(); } else showFlash(RU.cantResearch);
     };
     techsEl.append(b);
   }
@@ -318,15 +323,20 @@ function schedule() {
   clearInterval(timer);
   if (speed > 0 && !isGameOver(state)) timer = window.setInterval(tick, TICK_MS / speed);
 }
+function persist() {
+  if (store) saveGame(store, state);
+}
 function tick() {
   const before = state.res;
   state = step(state);
   rates.record(before, state.res);
+  if (state.tick % SAVE_EVERY === 0 || isGameOver(state)) persist();
   if (isGameOver(state)) clearInterval(timer);
   draw();
 }
 
 function restart() {
+  if (store) clearSave(store);
   state = initialState();
   lastEra = 0;
   techSig = '';
@@ -348,6 +358,7 @@ function tryBuild(e: PointerEvent) {
     return;
   }
   state = next;
+  persist();
   if (e.pointerType !== 'mouse') hover = null;
   draw();
 }
@@ -410,6 +421,9 @@ app.canvas.addEventListener('wheel', (e) => {
 goalsBtn.onclick = () => root.classList.add('sheet');
 $('sideClose').onclick = () => root.classList.remove('sheet');
 $('helpBtn').onclick = showIntro;
+$('newBtn').onclick = () => { if (confirm(RU.newGameConfirm)) { restart(); showIntro(); } };
+addEventListener('pagehide', persist);
+document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 addEventListener('keydown', (e) => {
   if (!intro.hidden) return;
   const n = Number(e.key);
@@ -420,4 +434,7 @@ new ResizeObserver(resize).observe(stage);
 renderSpeed();
 renderBar();
 resize();
-showIntro();
+if (saved) {
+  setSpeed(1);
+  showFlash(`${RU.loaded}: ${RU.day} ${((state.tick / 24) | 0) + 1}`);
+} else showIntro();
