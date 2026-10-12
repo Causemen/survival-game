@@ -45,6 +45,8 @@ export const HUT_CAPACITY = 4;
 export const HEAT_USE: Record<BuildingKind, number> = {
   hut: 2, campfire: -5, gatherer: 2, woodcutter: 1, quarry: 1, purifier: 3,
 };
+/** Доля еды, портящаяся за сутки (хранить дольше невыгодно). */
+export const FOOD_SPOIL_PER_DAY = 0.04;
 /** Нижний предел обогрева реактора при полной перегрузке бюджета. */
 export const MIN_HEAT_FACTOR = 0.25;
 
@@ -58,7 +60,7 @@ export const NIGHT_DELTA = -6;
 /** Стартовые запасы колонии (модель экономики). */
 export const START_RES: Resources = {
   wood: START.res.wood ?? 0, stone: START.res.stone ?? 0,
-  food: START.res.food ?? 0, water: START.res.water ?? 0, knowledge: 0,
+  food: 20, water: 16, knowledge: 0,
 };
 
 /** Падение сытости/жажды за час и сколько восстанавливает 1 единица еды/воды: человек ест и пьёт PERSON_DAY за сутки. */

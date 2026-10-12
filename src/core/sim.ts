@@ -1,4 +1,5 @@
-import { BLIZZARD_FUEL_MULT, BUILDINGS, FOOD_RESTORE, FUEL_PER_HOUR, HEAT_PER_RESIDENT, HEAT_USE, HUNGER_DROP, HUT_CAPACITY, MIN_HEAT_FACTOR, NIGHT_DELTA, NIGHT_FUEL_MULT, PRODUCTION, reactorHeat, START_RES, THIRST_DROP, WATER_RESTORE } from '../data/buildings';
+import { DILEMMA_FIRST_TICK, DILEMMA_GAP, DILEMMAS, type DilemmaOption, type Effect } from '../data/dilemmas';
+import { BLIZZARD_FUEL_MULT, FOOD_SPOIL_PER_DAY, BUILDINGS, FOOD_RESTORE, FUEL_PER_HOUR, HEAT_PER_RESIDENT, HEAT_USE, HUNGER_DROP, HUT_CAPACITY, MIN_HEAT_FACTOR, NIGHT_DELTA, NIGHT_FUEL_MULT, PRODUCTION, reactorHeat, START_RES, THIRST_DROP, WATER_RESTORE } from '../data/buildings';
 import { EVENTS } from '../data/events';
 import { TECHS } from '../data/techs';
 import { eraDone } from './goals';
@@ -33,6 +34,8 @@ export function initialState(): State {
     techs: [],
     seed: 1,
     lit: true,
+    dilemma: null,
+    dilemmaAt: DILEMMA_FIRST_TICK,
     active: [],
     log: [],
   };
@@ -167,6 +170,43 @@ export const isGameOver = (s: State): boolean => alive(s).length === 0;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+const resEnough = (res: Resources, e?: Effect): boolean => !e?.res || (Object.keys(e.res) as (keyof Resources)[]).every((k) => res[k] + (e.res![k] ?? 0) >= 0);
+
+/** Можно ли выбрать вариант (хватает ли ресурсов на его цену). */
+export const optionAvailable = (s: State, o: DilemmaOption): boolean => resEnough(s.res, o.effect);
+
+/** Раз в 1–2 дня предлагает игроку выбор с ценой; пока он не решён, новых нет. */
+function maybeDilemma(s: State): State {
+  if (s.dilemma || s.tick < s.dilemmaAt || isGameOver(s)) return s;
+  const ok = DILEMMAS.filter((d) => d.options.some((o) => optionAvailable(s, o)));
+  if (!ok.length) return s;
+  const d = ok[Math.floor(rand(s, 99) * ok.length)]!;
+  return { ...s, dilemma: d.id, log: [...s.log, { tick: s.tick, text: d.title }].slice(-6) };
+}
+
+function applyEffect(s: State, e: Effect): State {
+  const res = { ...s.res };
+  for (const k of Object.keys(e.res ?? {}) as (keyof Resources)[]) res[k] = Math.max(0, res[k] + (e.res![k] ?? 0));
+  let settlers = s.settlers;
+  if (e.health) settlers = settlers.map((p) => (p.alive ? { ...p, health: clamp(p.health + e.health!, 0, 100) } : p));
+  if (e.victim) {
+    const living = settlers.filter((p) => p.alive);
+    const v = living[Math.floor(rand(s, 7) * living.length)];
+    if (v) settlers = settlers.map((p) => (p.id === v.id ? { ...p, health: p.health - e.victim!, alive: p.health - e.victim! > 0 } : p));
+  }
+  return { ...s, res, settlers, log: [...s.log, { tick: s.tick, text: e.text }].slice(-6) };
+}
+
+/** Применяет выбранный вариант текущего выбора; null, если выбора нет или не хватает ресурсов. */
+export function resolveDilemma(s: State, choice: 0 | 1): State | null {
+  const d = DILEMMAS.find((x) => x.id === s.dilemma);
+  const o = d?.options[choice];
+  if (!d || !o || !optionAvailable(s, o)) return null;
+  const e = o.gamble ? (rand(s, 13) < o.gamble.chance ? o.gamble.win : o.gamble.lose) : o.effect!;
+  const gap = DILEMMA_GAP.min + Math.floor(rand(s, 17) * DILEMMA_GAP.spread);
+  return { ...applyEffect(s, e), dilemma: null, dilemmaAt: s.tick + gap };
+}
+
 /** Один тик = 1 игровой час. Чистая функция. */
 export function step(s: State): State {
   const res = { ...s.res };
@@ -186,6 +226,7 @@ export function step(s: State): State {
     for (const k of Object.keys(prod) as (keyof Resources)[]) res[k] += (prod[k] ?? 0) * prodMult(s, b.kind);
   }
   res.knowledge += living.length * 0.1;
+  res.food -= res.food * (FOOD_SPOIL_PER_DAY / 24);
 
   // Топка: костры и хижины жгут дрова; кончились — всё гаснет, пока не хватит на час растопки.
   const need = fuelNeed(s);
@@ -224,6 +265,7 @@ export function step(s: State): State {
 
   let next: State = { ...s, tick: s.tick + 1, res, settlers, lit };
   next = updateEvents(next);
+  next = maybeDilemma(next);
   // Эпоха пройдена: награда — реактор усиливается (больше радиус тепла) и приходят знания.
   if (eraDone(next)) {
     return { ...next, era: next.era + 1, reactor: { ...next.reactor, level: next.reactor.level + 1 }, res: { ...res, knowledge: res.knowledge + 20 } };

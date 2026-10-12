@@ -51,6 +51,10 @@ export interface State {
   seed: number;
   /** Горят ли костры и топятся ли хижины: false, если дрова кончились. */
   lit: boolean;
+  /** Ожидающий решения выбор игрока (id из DILEMMAS) или null. */
+  dilemma: string | null;
+  /** Не раньше этого тика появится следующий выбор. */
+  dilemmaAt: number;
   active: { id: string; until: number }[];
   log: { tick: number; text: string }[];
 }

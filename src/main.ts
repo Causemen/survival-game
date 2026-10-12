@@ -1,10 +1,11 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, forecast, heatCapacity, heatDemand, initialState, isFree, isGameOver, research, step } from './core/sim';
+import { alive, build, canAfford, forecast, heatCapacity, heatDemand, optionAvailable, resolveDilemma, initialState, isFree, isGameOver, research, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
 import { ERAS } from './data/eras';
 import { TECHS } from './data/techs';
+import { DILEMMAS } from './data/dilemmas';
 import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
 import { chapterSummary } from './core/chapter';
@@ -63,14 +64,15 @@ root.innerHTML = `
 </div>
 <footer id="build"><div id="tip"></div><div id="bar"></div></footer>
 <div id="intro" hidden></div>
-<div id="chapter" hidden></div>`;
+<div id="chapter" hidden></div>
+<div id="dilemma" hidden></div>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
 const resEl = $('res'), needsEl = $('needs'), dayEl = $('day'), speedEl = $('speed');
 const stage = $('stage'), view = $('view'), alertEl = $('alert'), bannerEl = $('banner');
 const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs'), eventsEl = $('events');
 const tip = $('tip'), bar = $('bar'), intro = $('intro'), chapter = $('chapter');
-const budgetEl = $('budget'), forecastEl = $('forecast'), heatLegend = $('heatLegend'), heatBtn = $('heatBtn');
+const dilemmaEl = $('dilemma'), budgetEl = $('budget'), forecastEl = $('forecast'), heatLegend = $('heatLegend'), heatBtn = $('heatBtn');
 let heat = false;
 
 // ——— Панели ———
@@ -230,6 +232,7 @@ function renderPanels() {
     forecastEl.classList.toggle('soon', next.inHours <= 6);
   }
 
+  if (state.dilemma && !over) showDilemma();
   renderEvents();
   renderTechs();
 
@@ -262,6 +265,29 @@ function showChapter() {
     + `<p>${c.next ? `${t.next}: ${c.next.name}${c.next.playable ? '' : ` (${t.soon})`}. ` : ''}${t.saved}</p><button>${t.ok}</button></div>`;
   chapter.hidden = false;
   chapter.querySelector('button')!.onclick = () => { chapter.hidden = true; setSpeed(prevSpeed); };
+}
+
+/** Выбор с ценой: игра на паузе, пока игрок не решит. */
+let dilemmaSpeed = 0;
+function showDilemma() {
+  const d = DILEMMAS.find((x) => x.id === state.dilemma);
+  if (!d) { dilemmaEl.hidden = true; return; }
+  if (!dilemmaEl.hidden) return;
+  dilemmaSpeed = speed || 1;
+  setSpeed(0);
+  dilemmaEl.innerHTML = `<div><h2>${d.title}</h2><p>${d.text}</p>${d.options.map((o, i) => `<button data-i="${i}"${optionAvailable(state, o) ? '' : ' disabled'}>${o.label}<small>${o.hint}</small></button>`).join('')}</div>`;
+  dilemmaEl.hidden = false;
+  dilemmaEl.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => {
+      const next = resolveDilemma(state, Number(b.dataset.i) as 0 | 1);
+      if (!next) return;
+      state = next;
+      dilemmaEl.hidden = true;
+      persist();
+      setSpeed(dilemmaSpeed);
+      draw();
+    };
+  });
 }
 
 function setHeat(on: boolean) {
@@ -370,6 +396,7 @@ function tick() {
 function restart() {
   if (store) clearSave(store);
   state = initialState();
+  dilemmaEl.hidden = true;
   lastEra = 0;
   techSig = '';
   seenLog = 0;
