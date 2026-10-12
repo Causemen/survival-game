@@ -20,13 +20,16 @@ export const ERAS: Era[] = [
   {
     name: 'Выживание',
     playable: true,
+    // Темп по модели экономики (economy/ECONOMY.md): первая эпоха около 10 игровых дней.
     goals: [
-      { label: 'Построить Собирателя', target: 1, value: (s) => count(s, 'gatherer') },
-      { label: 'Построить Фильтр воды', target: 1, value: (s) => count(s, 'purifier') },
+      { label: 'Построить 3 Собирателя', target: 3, value: (s) => count(s, 'gatherer') },
+      { label: 'Построить 2 Фильтра воды', target: 2, value: (s) => count(s, 'purifier') },
       { label: 'Построить Лесоруба', target: 1, value: (s) => count(s, 'woodcutter') },
-      { label: 'Построить 2 хижины', target: 2, value: (s) => count(s, 'hut') },
-      { label: 'Прожить 3 дня', target: 72, value: (s) => s.tick },
-      { label: 'Сохранить 8 живых поселенцев', target: 8, value: (s) => (s.tick >= 72 ? living(s) : 0) },
+      { label: 'Построить Каменоломню', target: 1, value: (s) => count(s, 'quarry') },
+      { label: 'Построить 3 хижины', target: 3, value: (s) => count(s, 'hut') },
+      { label: 'Изучить 2 технологии', target: 2, value: (s) => s.techs.length },
+      { label: 'Прожить 10 дней', target: 240, value: (s) => s.tick },
+      { label: 'Сохранить 8 живых поселенцев', target: 8, value: (s) => (s.tick >= 240 ? living(s) : 0) },
     ],
   },
   { name: 'Медицина', playable: false, goals: [] },
