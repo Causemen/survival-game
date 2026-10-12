@@ -3,7 +3,7 @@ import { alive, reactorRadius } from '../core/sim';
 import type { Settler, State } from '../core/types';
 import { BUILDINGS } from '../data/buildings';
 import { type Anim, type Art, type Gender } from './assets';
-import { type ActorRefs, drawActors, drawDecor, drawGround, place, spriteScale } from './world';
+import { type ActorRefs, drawActors, drawDecor, drawGround, drawHeatMap, place, spriteScale } from './world';
 
 /** Кадров в секунду для каждого действия. */
 const FPS: Record<Anim, number> = { idle: 1.5, walk: 6, work: 3, cold: 7 };
@@ -68,6 +68,7 @@ export class Scene {
   private state?: State;
   private cell = 32;
   private groundSig = '';
+  private heat = false;
   private actorSig = '';
   private time = 0;
   private timeScale = 1;
@@ -84,16 +85,22 @@ export class Scene {
     this.timeScale = speed;
   }
 
+  /** Тепловая карта: цветные зоны поверх земли. */
+  setHeatMap(on: boolean) {
+    this.heat = on;
+  }
+
   setState(state: State, cell: number) {
     this.state = state;
     const resized = cell !== this.cell;
     this.cell = cell;
     const campfires = state.buildings.filter((b) => b.kind === 'campfire').map((b) => `${b.x},${b.y}`).join(';');
-    const groundSig = `${cell}|${state.w}x${state.h}|${state.reactor.level}|${campfires}|${state.active.map((a) => a.id).join()}`;
+    const groundSig = `${this.heat ? 'h' : ''}${cell}|${state.w}x${state.h}|${state.reactor.level}|${campfires}|${state.active.map((a) => a.id).join()}`;
     if (groundSig !== this.groundSig) {
       this.groundSig = groundSig;
       this.ground.removeChildren().forEach((c) => c.destroy());
       drawGround(this.ground, state, cell, this.art);
+      if (this.heat) drawHeatMap(this.ground, state, cell);
     }
     const actorSig = `${cell}|${state.reactor.level}|${state.buildings.map((b) => b.id).join()}`;
     if (actorSig !== this.actorSig) {

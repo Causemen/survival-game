@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { alive, build, canAfford, initialState, isFree, isGameOver, research, step } from './core/sim';
+import { alive, build, canAfford, forecast, initialState, isFree, isGameOver, research, step } from './core/sim';
 import type { BuildingKind, State } from './core/types';
 import { BUILDINGS } from './data/buildings';
 import { RU } from './i18n';
@@ -7,6 +7,7 @@ import { ERAS } from './data/eras';
 import { TECHS } from './data/techs';
 import { EVENTS } from './data/events';
 import { goalProgress } from './core/goals';
+import { chapterSummary } from './core/chapter';
 import { loadArt } from './render/assets';
 import { Scene } from './render/scene';
 import { clearSave, loadGame, saveGame } from './core/save';
@@ -35,13 +36,15 @@ root.className = 'game';
 root.innerHTML = `
 <header id="top">
   <div id="res"></div>
-  <div id="time"><span id="day"></span><span id="speed"></span><button class="tbtn" id="helpBtn" title="${RU.help}">?</button><button class="tbtn" id="newBtn" title="${RU.newGame}">⟲</button></div>
+  <div id="time"><span id="day"></span><span id="speed"></span><button class="tbtn" id="heatBtn" title="${RU.heatMap}">🌡️</button><button class="tbtn" id="helpBtn" title="${RU.help}">?</button><button class="tbtn" id="newBtn" title="${RU.newGame}">⟲</button></div>
   <div id="needs"></div>
 </header>
 <div id="main">
   <div id="stage">
     <div id="view"></div>
     <div id="alert" hidden></div>
+    <div id="forecast" hidden></div>
+    <div id="heatLegend" hidden>${RU.heatLegend}</div>
     <div id="banner" hidden></div>
     <button id="goalsBtn"></button>
   </div>
@@ -58,13 +61,16 @@ root.innerHTML = `
   </aside>
 </div>
 <footer id="build"><div id="tip"></div><div id="bar"></div></footer>
-<div id="intro" hidden></div>`;
+<div id="intro" hidden></div>
+<div id="chapter" hidden></div>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
 const resEl = $('res'), needsEl = $('needs'), dayEl = $('day'), speedEl = $('speed');
 const stage = $('stage'), view = $('view'), alertEl = $('alert'), bannerEl = $('banner');
 const goalsBtn = $('goalsBtn'), goalsEl = $('goals'), selEl = $('sel'), techsEl = $('techs'), eventsEl = $('events');
-const tip = $('tip'), bar = $('bar'), intro = $('intro');
+const tip = $('tip'), bar = $('bar'), intro = $('intro'), chapter = $('chapter');
+const forecastEl = $('forecast'), heatLegend = $('heatLegend'), heatBtn = $('heatBtn');
+let heat = false;
 
 // ——— Панели ———
 
@@ -179,7 +185,7 @@ function renderPanels() {
   dayEl.textContent = `${RU.day} ${((state.tick / 24) | 0) + 1}, ${String(state.tick % 24).padStart(2, '0')}:00`;
 
   // Цели и эпохи
-  if (state.era > lastEra) { lastEra = state.era; showBanner(RU.eraDone); }
+  if (state.era > lastEra) { lastEra = state.era; showChapter(); }
   const eraDef = ERAS[Math.min(state.era, ERAS.length - 1)]!;
   const gp = goalProgress(state);
   const doneN = gp.filter((g) => g.done).length;
@@ -207,6 +213,15 @@ function renderPanels() {
   alertEl.textContent = text;
   alertEl.classList.toggle('bad', over || !!flash);
 
+  // Прогноз: ближайшее событие, которое ещё не началось
+  const next = forecast(state)[0];
+  const ev = next && EVENTS.find((e) => e.id === next.id);
+  forecastEl.hidden = !ev || over;
+  if (ev && next) {
+    forecastEl.textContent = `${eventIcon(ev.id)} ${ev.name} ${RU.forecastIn} ${next.inHours} ${RU.hours}`;
+    forecastEl.classList.toggle('soon', next.inHours <= 6);
+  }
+
   renderEvents();
   renderTechs();
 
@@ -224,6 +239,29 @@ function showBanner(text: string) {
 function showFlash(text: string) {
   flash = { text, until: performance.now() + 2000 };
   renderPanels();
+}
+
+/** Итог пройденной эпохи: игра на паузе и сохранена, «Продолжить» возвращает прежнюю скорость. */
+function showChapter() {
+  const c = chapterSummary(state);
+  const t = RU.chapter;
+  const prevSpeed = speed || 1;
+  setSpeed(0);
+  persist();
+  chapter.innerHTML = `<div><h2>${t.title}: ${c.era}</h2><p>${RU.eraDone}</p>`
+    + `<div class="stats"><span>${t.day}: <b>${c.day}</b></span><span>${t.alive}: <b>${c.alive}</b></span>`
+    + `<span>${t.lost}: <b>${c.lost}</b></span><span>${t.buildings}: <b>${c.buildings}</b></span><span>${t.techs}: <b>${c.techs}</b></span></div>`
+    + `<p>${c.next ? `${t.next}: ${c.next.name}${c.next.playable ? '' : ` (${t.soon})`}. ` : ''}${t.saved}</p><button>${t.ok}</button></div>`;
+  chapter.hidden = false;
+  chapter.querySelector('button')!.onclick = () => { chapter.hidden = true; setSpeed(prevSpeed); };
+}
+
+function setHeat(on: boolean) {
+  heat = on;
+  scene.setHeatMap(on);
+  heatBtn.classList.toggle('on', on);
+  heatLegend.hidden = !on;
+  draw();
 }
 
 function showIntro() {
@@ -411,11 +449,13 @@ app.canvas.addEventListener('wheel', (e) => {
 goalsBtn.onclick = () => root.classList.add('sheet');
 $('sideClose').onclick = () => root.classList.remove('sheet');
 $('helpBtn').onclick = showIntro;
+heatBtn.onclick = () => setHeat(!heat);
 $('newBtn').onclick = () => { if (confirm(RU.newGameConfirm)) { restart(); showIntro(); } };
 addEventListener('pagehide', persist);
 document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 addEventListener('keydown', (e) => {
-  if (!intro.hidden) return;
+  if (!intro.hidden || !chapter.hidden) return;
+  if (e.key === 'h' || e.key === 'р') { setHeat(!heat); return; }
   const n = Number(e.key);
   if (n >= 1 && n <= KINDS.length) select(KINDS[n - 1]!);
   else if (e.key === ' ') { e.preventDefault(); setSpeed(speed === 0 ? 1 : 0); }

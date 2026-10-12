@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { build, initialState, isGameOver, research, step, tempAt, AMBIENT } from './sim';
+import { build, forecast, initialState, isGameOver, research, step, tempAt, AMBIENT } from './sim';
 
 const run = (s: ReturnType<typeof initialState>, n: number) => {
   for (let i = 0; i < n; i++) s = step(s);
@@ -143,5 +143,25 @@ describe('экономика: потребление и выработка в с
     expect(s.settlers.filter((p) => p.alive).length).toBe(8);
     expect(s.res.food).toBeGreaterThan(0);
     expect(s.res.water).toBeGreaterThan(0);
+  });
+});
+
+describe('прогноз событий', () => {
+  it('совпадает с тем, что реально произойдёт', () => {
+    let s = initialState();
+    s = { ...s, tick: 40 };
+    const fc = forecast(s, 60);
+    expect(fc.length).toBeGreaterThan(0);
+    const first = fc[0]!;
+    for (let i = 1; i < first.inHours; i++) {
+      s = step(s);
+      expect(s.active.some((a) => a.id === first.id)).toBe(false);
+    }
+    s = step(s);
+    expect(s.active.some((a) => a.id === first.id)).toBe(true);
+  });
+  it('не обещает уже идущее событие', () => {
+    const s = { ...initialState(), tick: 100, active: [{ id: 'blizzard', until: 105 }] };
+    expect(forecast(s, 3).some((f) => f.id === 'blizzard')).toBe(false);
   });
 });

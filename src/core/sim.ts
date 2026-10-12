@@ -115,6 +115,24 @@ function updateEvents(s: State): State {
   return { ...s, active, log: log.slice(-6) };
 }
 
+/** На сколько часов вперёд игрок видит события. */
+export const FORECAST_HOURS = 36;
+
+/**
+ * Прогноз событий: какие начнутся в ближайшие часы и через сколько. Точный, а не «примерный»:
+ * случайность детерминирована (seed + тик), а на начало событий влияет только список активных.
+ */
+export function forecast(s: State, hours = FORECAST_HOURS): { id: string; inHours: number }[] {
+  const out: { id: string; inHours: number }[] = [];
+  let cur = s;
+  for (let k = 1; k <= hours; k++) {
+    const had = new Set(cur.active.map((a) => a.id));
+    cur = updateEvents({ ...cur, tick: cur.tick + 1 });
+    for (const a of cur.active) if (!had.has(a.id)) out.push({ id: a.id, inHours: k });
+  }
+  return out;
+}
+
 export const alive = (s: State): Settler[] => s.settlers.filter((p) => p.alive);
 export const isGameOver = (s: State): boolean => alive(s).length === 0;
 
