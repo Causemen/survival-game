@@ -41,6 +41,40 @@
           "frames": 2
         }
       }
+    },
+    {
+      "name": "scavenger",
+      "anims": {
+        "idle": {
+          "file": "units/scavenger_idle.png",
+          "frames": 3
+        },
+        "walk": {
+          "file": "units/scavenger_walk.png",
+          "frames": 7
+        },
+        "work": {
+          "file": "units/scavenger_work.png",
+          "frames": 6
+        }
+      }
+    },
+    {
+      "name": "medic",
+      "anims": {
+        "idle": {
+          "file": "units/medic_idle.png",
+          "frames": 2
+        },
+        "walk": {
+          "file": "units/medic_walk.png",
+          "frames": 7
+        },
+        "work": {
+          "file": "units/medic_work.png",
+          "frames": 5
+        }
+      }
     }
   ]
 }

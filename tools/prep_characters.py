@@ -9,7 +9,7 @@
 {"out": "public/assets/units", "frame": [128, 96], "figure": 84, "characters": {
   "scientist_m": {"idle": {"file": "idle.jpg", "frames": 2}, "walk": {"file": "walk.jpg", "frames": 10, "gap": 10}}}}
 Необязательно для листа: "upright" (рост кадров в долях от прямой стойки, для согнутых поз) и
-"groups" (какие найденные куски склеить в кадр, если рядом с фигурой лежит отдельный предмет).
+"light": true (светлый фон вместо пурпурного), "cuts" (x-координаты ручных разрезов), "groups" (какие найденные куски склеить в кадр, если рядом с фигурой лежит отдельный предмет).
 """
 import json
 import sys
@@ -17,6 +17,33 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+
+def key_light(img: Image.Image) -> np.ndarray:
+    """Светлый фон (не пурпурный): заливка от краёв по близости к цвету угла; сероватая тень тоже уходит."""
+    a = np.asarray(img.convert("RGB")).astype(np.int32)
+    h, w, _ = a.shape
+    ref = a[2, 2]
+    near = np.abs(a - ref).sum(axis=2) < 70
+    # тень: холодный серо-синий цвет (синий заметно выше красного и зелёного), у фигур такого почти нет
+    cold = (a[..., 2] - np.maximum(a[..., 0], a[..., 1]) > 6) & (a.sum(axis=2) > 200)
+    cand = near | cold
+    seen = np.zeros((h, w), bool)
+    stack = [(0, x) for x in range(w)] + [(h - 1, x) for x in range(w)] + [(y, 0) for y in range(h)] + [(y, w - 1) for y in range(h)]
+    while stack:
+        y, x = stack.pop()
+        if seen[y, x] or not cand[y, x]:
+            continue
+        seen[y, x] = True
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and not seen[ny, nx]:
+                stack.append((ny, nx))
+    seen |= np.abs(a - ref).sum(axis=2) < 50  # просветы между рукой и телом, куда заливка не дотянулась
+    alpha = np.where(seen, 0, 255)
+    out = np.dstack([a.clip(0, 255), alpha]).astype(np.uint8)
+    out[..., :3][out[..., 3] == 0] = 0
+    return out
 
 
 def key(img: Image.Image) -> np.ndarray:
@@ -51,9 +78,12 @@ def segments(alpha: np.ndarray, gap: int = 10, speck: int = 4) -> list[tuple[int
     return segs
 
 
-def prep(path: str, frames: int | None, gap: int = 10, groups: list[list[int]] | None = None):
-    rgba = key(Image.open(path))
+def prep(path: str, frames: int | None, gap: int = 10, groups: list[list[int]] | None = None, light: bool = False, cuts: list[int] | None = None):
+    rgba = (key_light if light else key)(Image.open(path))
     segs = segments(rgba[..., 3], gap)
+    for c in cuts or []:  # ручной разрез, если кадры касаются друг друга
+        i = next(i for i, (a, b) in enumerate(segs) if a < c < b)
+        segs[i : i + 1] = [(segs[i][0], c), (c, segs[i][1])]
     if groups:  # ручная склейка найденных кусков в кадры, если рядом с фигурой лежит отдельный предмет
         segs = [(segs[g[0]][0], segs[g[-1]][1]) for g in groups]
     if frames and len(segs) != frames:
@@ -82,7 +112,7 @@ def main():
             if anim not in anims:
                 continue
             spec = anims[anim]
-            frames = prep(str(base / spec["file"]), spec.get("frames"), spec.get("gap", 10), spec.get("groups"))
+            frames = prep(str(base / spec["file"]), spec.get("frames"), spec.get("gap", 10), spec.get("groups"), spec.get("light", False), spec.get("cuts"))
             # масштаб: рост самого высокого кадра листа (прямо стоящая фигура) = figure px
             tallest = max(f.height for f in frames)
             k = figure / (tallest / spec.get("upright", 1.0))
