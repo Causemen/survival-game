@@ -107,6 +107,11 @@ export interface ActorRefs {
   smoke: { x: number; y: number; kind: 'smoke' | 'steam' }[];
 }
 
+/** Ширина спрайта здания в клетках (по длинной стороне): картинки в стиле персонажей крупнее клетки. */
+const BUILDING_SIZE: Partial<Record<Building['kind'], number>> = { campfire: 1.15, purifier: 1, hut: 1.35 };
+const DEFAULT_BUILDING_SIZE = 1.35;
+const REACTOR_SIZE = 2.3;
+
 /** Реактор и здания. Спрайты получают zIndex по низу, поэтому люди и деревья сортируются по глубине. */
 export function drawActors(layer: Container, state: State, cell: number, art: Art): ActorRefs {
   const refs: ActorRefs = { campfires: [], smoke: [] };
@@ -114,7 +119,7 @@ export function drawActors(layer: Container, state: State, cell: number, art: Ar
   layer.addChild(g);
   const rx = (state.reactor.x + 0.5) * cell, ry = state.reactor.y * cell;
   if (art.reactor) {
-    const s = place(art.reactor, rx, ry + cell, cell * 1.3);
+    const s = place(art.reactor, rx, ry + cell, cell * REACTOR_SIZE);
     layer.addChild(s);
     refs.reactor = s;
     refs.smoke.push({ x: rx, y: s.y - s.height + 2, kind: 'steam' });
@@ -123,7 +128,7 @@ export function drawActors(layer: Container, state: State, cell: number, art: Ar
   for (const b of state.buildings) {
     const tex = art[b.kind];
     if (tex) {
-      const s = place(tex, (b.x + 0.5) * cell, (b.y + 1) * cell - 1, cell * 0.95);
+      const s = place(tex, (b.x + 0.5) * cell, (b.y + 1) * cell - 1, cell * (BUILDING_SIZE[b.kind] ?? DEFAULT_BUILDING_SIZE));
       layer.addChild(s);
       if (b.kind === 'campfire') {
         refs.campfires.push({ b, sprite: s });
