@@ -113,7 +113,7 @@ export interface ActorRefs {
 /** Ширина спрайта здания в клетках (по длинной стороне): картинки в стиле персонажей крупнее клетки. */
 const BUILDING_SIZE: Partial<Record<Building['kind'], number>> = { campfire: 1.15, hut: 1.35 };
 const DEFAULT_BUILDING_SIZE = 1.35;
-const REACTOR_SIZE = 2.3;
+const REACTOR_SIZE = 4.6;
 
 /** Реактор и здания. Спрайты получают zIndex по низу, поэтому люди и деревья сортируются по глубине. */
 export function drawActors(layer: Container, state: State, cell: number, art: Art): ActorRefs {
