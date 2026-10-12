@@ -1,5 +1,5 @@
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
-import { alive, reactorRadius } from '../core/sim';
+import { alive, heatFactor, isNight, reactorRadius } from '../core/sim';
 import type { Settler, State } from '../core/types';
 import { BUILDINGS } from '../data/buildings';
 import { type Anim, type Art, type Gender } from './assets';
@@ -95,7 +95,7 @@ export class Scene {
     const resized = cell !== this.cell;
     this.cell = cell;
     const campfires = state.buildings.filter((b) => b.kind === 'campfire').map((b) => `${b.x},${b.y}`).join(';');
-    const groundSig = `${this.heat ? 'h' : ''}${cell}|${state.w}x${state.h}|${state.reactor.level}|${campfires}|${state.active.map((a) => a.id).join()}`;
+    const groundSig = `${this.heat ? 'h' : ''}${cell}|${state.w}x${state.h}|${state.reactor.level}|${campfires}|${state.lit ? 1 : 0}|${heatFactor(state).toFixed(2)}|${isNight(state.tick) ? 1 : 0}|${state.active.map((a) => a.id).join()}`;
     if (groundSig !== this.groundSig) {
       this.groundSig = groundSig;
       this.ground.removeChildren().forEach((c) => c.destroy());
