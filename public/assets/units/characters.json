@@ -1,0 +1,46 @@
+{
+  "characters": [
+    {
+      "name": "scientist_m",
+      "anims": {
+        "idle": {
+          "file": "units/scientist_m_idle.png",
+          "frames": 2
+        },
+        "walk": {
+          "file": "units/scientist_m_walk.png",
+          "frames": 10
+        },
+        "work": {
+          "file": "units/scientist_m_work.png",
+          "frames": 4
+        },
+        "cold": {
+          "file": "units/scientist_m_cold.png",
+          "frames": 2
+        }
+      }
+    },
+    {
+      "name": "scientist_f",
+      "anims": {
+        "idle": {
+          "file": "units/scientist_f_idle.png",
+          "frames": 2
+        },
+        "walk": {
+          "file": "units/scientist_f_walk.png",
+          "frames": 8
+        },
+        "work": {
+          "file": "units/scientist_f_work.png",
+          "frames": 5
+        },
+        "cold": {
+          "file": "units/scientist_f_cold.png",
+          "frames": 2
+        }
+      }
+    }
+  ]
+}

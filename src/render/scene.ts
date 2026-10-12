@@ -179,6 +179,8 @@ export class Scene {
     if (tex) {
       const s = new Sprite(tex);
       s.anchor.set(0.5, 1);
+      // Лист кадров без тени (она вырезана вместе с фоном): рисуем мягкую свою, в координатах картинки.
+      if (char >= 0) s.addChild(new Graphics().ellipse(0, -tex.height * 0.045 - 1, tex.height * 0.2, tex.height * 0.04).fill({ color: 0x000000, alpha: 0.28 }));
       return s;
     }
     return new Graphics().circle(0, -this.cell * 0.12, this.cell * 0.12).fill(0xffffff);

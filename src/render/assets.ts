@@ -141,7 +141,6 @@ function sliceStrip(img: HTMLImageElement, n: number): Texture[] {
     const c = canvasOf(Math.max(1, Math.round(fw * k)), Math.max(1, Math.round(img.height * k)));
     c.getContext('2d')!.drawImage(clean, i * fw, 0, fw, img.height, 0, 0, c.width, c.height);
     const tex = Texture.from(c);
-    if (img.height <= PIXEL_ART_MAX * 2) tex.source.scaleMode = 'nearest';
     return tex;
   });
 }
